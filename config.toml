@@ -1,0 +1,112 @@
+# Moose — default configuration
+# Copied to $XDG_CONFIG_HOME/moose/config.toml (or ~/.config/moose/config.toml) on first run.
+
+[shell]
+# Empty = use $SHELL
+program = ""
+args = []
+working_directory = ""   # empty = $HOME
+
+[shell.env]
+TERM = "xterm-256color"
+COLORTERM = "truecolor"
+
+[font]
+family = "JetBrainsMono Nerd Font"
+size = 12.0
+line_height = 1.0
+ligatures = true
+
+[window]
+title = "Moose"
+dynamic_title = true     # let the shell change the title via OSC 0/2
+columns = 120
+rows = 35
+padding_x = 12
+padding_y = 8
+opacity = 1.0
+decorations = true
+confirm_close = false
+
+[cursor]
+style = "beam"           # block | beam | underline
+blink = true
+blink_interval_ms = 500
+
+[scrollback]
+lines = 10000
+multiplier = 3           # lines per mouse-wheel step
+
+[mouse]
+hide_when_typing = true
+copy_on_select = false
+open_urls = true
+
+[bell]
+audible = false
+visual = false
+
+# Tokyo Night
+[colors]
+foreground = "#c0caf5"
+background = "#1a1b26"
+cursor = "#c0caf5"
+cursor_text = "#1a1b26"
+selection_foreground = "#c0caf5"
+selection_background = "#33467c"
+
+[colors.normal]
+black   = "#15161e"
+red     = "#f7768e"
+green   = "#9ece6a"
+yellow  = "#e0af68"
+blue    = "#7aa2f7"
+magenta = "#bb9af7"
+cyan    = "#7dcfff"
+white   = "#a9b1d6"
+
+[colors.bright]
+black   = "#414868"
+red     = "#f7768e"
+green   = "#9ece6a"
+yellow  = "#e0af68"
+blue    = "#7aa2f7"
+magenta = "#bb9af7"
+cyan    = "#7dcfff"
+white   = "#c0caf5"
+
+[[keybindings]]
+keys = "ctrl+shift+c"
+action = "copy"
+
+[[keybindings]]
+keys = "ctrl+shift+v"
+action = "paste"
+
+[[keybindings]]
+keys = "ctrl+shift+equal"
+action = "font_size_increase"
+
+[[keybindings]]
+keys = "ctrl+shift+minus"
+action = "font_size_decrease"
+
+[[keybindings]]
+keys = "ctrl+shift+0"
+action = "font_size_reset"
+
+[[keybindings]]
+keys = "shift+page_up"
+action = "scroll_page_up"
+
+[[keybindings]]
+keys = "shift+page_down"
+action = "scroll_page_down"
+
+[[keybindings]]
+keys = "ctrl+shift+n"
+action = "new_window"
+
+[[keybindings]]
+keys = "ctrl+shift+f5"
+action = "reload_config"
