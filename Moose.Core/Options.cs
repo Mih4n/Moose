@@ -3,7 +3,7 @@ using Tomlyn.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
-namespace Moose;
+namespace Moose.Core;
 
 public static class OptionsExtender
 {

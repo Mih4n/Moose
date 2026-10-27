@@ -1,5 +1,9 @@
-﻿using Moose;
+﻿using Moose.Core;
+using Moose.Graphics;
 using Microsoft.Extensions.Hosting;
+
+var context = new GraphicsContex();
+context.Run();
 
 var builder = Host.CreateApplicationBuilder(args);
 var configuration = builder.Configuration;

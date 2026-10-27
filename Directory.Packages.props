@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+    <PackageVersion Include="Tomlyn.Extensions.Configuration" Version="2.0.1" />
+    <PackageVersion Include="Silk.NET.Windowing" Version="2.23.0" />
+    <PackageVersion Include="Silk.NET.Input" Version="2.23.0" />
+    <PackageVersion Include="Silk.NET.OpenGL" Version="2.23.0" />
+    <PackageVersion Include="Silk.NET.Vulkan" Version="2.23.0" />
+    <PackageVersion Include="Silk.NET.Vulkan.Extensions.KHR" Version="2.23.0" />
+  </ItemGroup>
+</Project>
