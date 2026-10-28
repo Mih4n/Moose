@@ -1,7 +1,6 @@
 { pkgs, lib, ... }:
 
 let
-  # GLFW from Silk.NET dlopens these at runtime, NixOS has no global /usr/lib
   runtimeLibs = with pkgs; [
     glfw
     vulkan-loader
@@ -26,6 +25,7 @@ in
   packages = with pkgs; [
     vulkan-tools
     vulkan-validation-layers
+    shaderc
   ];
 
   env.LD_LIBRARY_PATH = lib.makeLibraryPath runtimeLibs;

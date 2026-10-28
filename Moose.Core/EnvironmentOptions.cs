@@ -9,13 +9,16 @@ public record EnvironmentOptions(
     string? Home,
     string? Shell,
     string? HomeConfig
-);
+)
+{
+    public EnvironmentOptions() : this(null, null, null) { }
+}
 
 public static class EnvironmentOptionsExtender
 {
-    extension(HostApplicationBuilder builder)
+    extension(IHostApplicationBuilder builder)
     {
-        public HostApplicationBuilder AddEnvironmentOptions()
+        public IHostApplicationBuilder AddEnvironmentOptions()
         {
             var services = builder.Services;
             var configuration = builder.Configuration;
@@ -28,7 +31,7 @@ public static class EnvironmentOptionsExtender
 
             configuration.AddInMemoryCollection(mapping);
             services.Configure<EnvironmentOptions>(configuration.GetSection("Environment"));
-            services.AddSingleton<EnvironmentOptions>(sp => sp.GetRequiredService<IOptions<EnvironmentOptions>>().Value);
+            services.AddSingleton(sp => sp.GetRequiredService<IOptions<EnvironmentOptions>>().Value);
 
             return builder;
         }

@@ -8,11 +8,27 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Silk.NET.Windowing" />
     <PackageReference Include="Silk.NET.Input" />
     <PackageReference Include="Silk.NET.OpenGL" />
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
+    <PackageReference Include="FreeTypeSharp" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Moose.Graphics.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Shader Include="Shaders/*.vert;Shaders/*.frag" />
+    <EmbeddedResource Include="@(Shader->'$(IntermediateOutputPath)%(Filename)%(Extension).spv')" LogicalName="%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <Target Name="CompileShaders" BeforeTargets="BeforeBuild" Inputs="@(Shader)" Outputs="@(Shader->'$(IntermediateOutputPath)%(Filename)%(Extension).spv')">
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <Exec Command="glslc &quot;%(Shader.FullPath)&quot; -o &quot;$(IntermediateOutputPath)%(Shader.Filename)%(Shader.Extension).spv&quot;" />
+  </Target>
 
 </Project>

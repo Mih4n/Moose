@@ -1,5 +1,7 @@
 <Solution>
   <Project Path="Moose.Core/Moose.Core.csproj" />
+  <Project Path="Moose.Core.Tests/Moose.Core.Tests.csproj" />
   <Project Path="Moose.Graphics/Moose.Graphics.csproj" />
+  <Project Path="Moose.Graphics.Tests/Moose.Graphics.Tests.csproj" />
   <Project Path="Moose.UI/Moose.UI.csproj" />
 </Solution>

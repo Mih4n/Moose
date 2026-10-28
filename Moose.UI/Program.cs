@@ -1,17 +1,19 @@
-﻿using Moose.Core;
-using Moose.Graphics;
-using Microsoft.Extensions.Hosting;
+using Moose.Core;
+using Moose.Core.Terminal.Sessions;
+using Moose.UI;
+using Moose.Graphics.Hosting;
 
-var context = new GraphicsContex();
-context.Run();
-
-var builder = Host.CreateApplicationBuilder(args);
-var configuration = builder.Configuration;
-var services = builder.Services;
-
-builder.AddEnvironmentOptions();
-builder.AddTomlConfiguration();
+var builder = MooseApp.CreateBuilder(args);
+builder
+    .AddEnvironmentOptions()
+    .AddTomlConfiguration()
+    .AddTerminal();
+builder.Window(window => window
+    .Title(builder.Configuration["window:title"] ?? "Moose")
+    .Size(1024, 768));
 
 var app = builder.Build();
 
-app.Run();
+app.UseEffect<DebugBounds>();
+
+app.Run<RootView>();

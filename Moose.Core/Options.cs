@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Tomlyn.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,16 +19,26 @@ public static class OptionsExtender
         return file;
     }
 
+    public static IConfiguration LoadDefaults()
+    {
+        using var stream = OpenDefaultConfig();
+        return new ConfigurationBuilder()
+            .AddTomlStream(stream)
+            .Build();
+    }
+
+    private static Stream OpenDefaultConfig()
+    {
+        var assembly = typeof(MooseCoreAssamblyPointer).Assembly;
+        return assembly.GetManifestResourceStream("Moose.config.toml") ?? throw new Exception("No config resource found!");
+    }
+
     private static string CreateDefaultConfig(string directory)
     {
         var file = Path.Combine(directory, "config.toml");
         if (File.Exists(file)) return file;
 
-        var resource = "Moose.config.toml";
-        var assembly = typeof(MooseAssamblyPointer).Assembly;
-        using var stream = assembly.GetManifestResourceStream(resource);
-
-        if (stream is null) throw new Exception("No config resource found!");
+        using var stream = OpenDefaultConfig();
         using var fileStream = new FileStream(file, FileMode.Create, FileAccess.Write);
 
         stream.CopyTo(fileStream);
@@ -35,10 +46,10 @@ public static class OptionsExtender
         return file;
     }
 
-    extension(HostApplicationBuilder builder)
+    extension(IHostApplicationBuilder builder)
     {
 
-        public HostApplicationBuilder AddTomlConfiguration()
+        public IHostApplicationBuilder AddTomlConfiguration()
         {
             using var serviceProvider = builder.Services.BuildServiceProvider();
             var env = serviceProvider.GetRequiredService<EnvironmentOptions>();
@@ -49,7 +60,7 @@ public static class OptionsExtender
             return builder;
         }
 
-        public HostApplicationBuilder AddOptions<T>(string section) where T : class
+        public IHostApplicationBuilder AddOptions<T>(string section) where T : class
         {
             var services = builder.Services;
             var configuration = builder.Configuration;

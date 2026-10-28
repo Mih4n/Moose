@@ -1,3 +1,3 @@
-namespace Moose;
+namespace Moose.Core;
 
-public static class MooseAssamblyPointer;
+public static class MooseCoreAssamblyPointer;
