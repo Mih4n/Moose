@@ -6,6 +6,8 @@ namespace Moose.Graphics.Fonts;
 internal sealed class BoxDrawingRasterizer
 {
     const int Samples = 4;
+    // powerline separators overshoot the cell vertically so the rows at their flat edge are not mere slivers
+    const float Overshoot = 1f;
 
     static readonly Dictionary<int, (int Up, int Right, int Down, int Left)> Lines = new()
     {
@@ -66,36 +68,37 @@ internal sealed class BoxDrawingRasterizer
     void Draw(int codepoint)
     {
         var halfHeight = height / 2f;
+        var reach = halfHeight + Overshoot;
         var thickness = (float)light;
         switch (codepoint)
         {
             case 0xE0B0:
-                Sample(point => point.X <= width * (1 - MathF.Abs(point.Y - halfHeight) / halfHeight));
+                Sample(point => point.X <= width * (1 - MathF.Abs(point.Y - halfHeight) / reach));
                 FillRect(0, 0, 1, height);
                 break;
             case 0xE0B2:
-                Sample(point => point.X >= width * MathF.Abs(point.Y - halfHeight) / halfHeight);
+                Sample(point => point.X >= width * MathF.Abs(point.Y - halfHeight) / reach);
                 FillRect(width - 1, 0, width, height);
                 break;
             case 0xE0B1:
-                Sample(point => NearPolyline(point, thickness, new(0, 0), new(width, halfHeight), new(0, height)));
+                Sample(point => NearPolyline(point, thickness, new(0, -Overshoot), new(width, halfHeight), new(0, height + Overshoot)));
                 break;
             case 0xE0B3:
-                Sample(point => NearPolyline(point, thickness, new(width, 0), new(0, halfHeight), new(width, height)));
+                Sample(point => NearPolyline(point, thickness, new(width, -Overshoot), new(0, halfHeight), new(width, height + Overshoot)));
                 break;
             case 0xE0B4:
-                Sample(point => InEllipse(point, 0, halfHeight, width, halfHeight));
+                Sample(point => InEllipse(point, 0, halfHeight, width, reach));
                 FillRect(0, 0, 1, height);
                 break;
             case 0xE0B6:
-                Sample(point => InEllipse(point, width, halfHeight, width, halfHeight));
+                Sample(point => InEllipse(point, width, halfHeight, width, reach));
                 FillRect(width - 1, 0, width, height);
                 break;
             case 0xE0B5:
-                Sample(point => InEllipse(point, 0, halfHeight, width, halfHeight) && !InEllipse(point, 0, halfHeight, width - thickness, halfHeight - thickness));
+                Sample(point => InEllipse(point, 0, halfHeight, width, reach) && !InEllipse(point, 0, halfHeight, width - thickness, reach - thickness));
                 break;
             case 0xE0B7:
-                Sample(point => InEllipse(point, width, halfHeight, width, halfHeight) && !InEllipse(point, width, halfHeight, width - thickness, halfHeight - thickness));
+                Sample(point => InEllipse(point, width, halfHeight, width, reach) && !InEllipse(point, width, halfHeight, width - thickness, reach - thickness));
                 break;
             case 0xE0B8:
                 Sample(point => point.X / width <= point.Y / height);

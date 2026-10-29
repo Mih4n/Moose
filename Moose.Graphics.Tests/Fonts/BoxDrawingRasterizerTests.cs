@@ -37,6 +37,19 @@ public class BoxDrawingRasterizerTests
         for (var row = 0; row < Height; row++) Assert.Equal(255, At(bitmap, edgeColumn, row));
     }
 
+    [Theory]
+    [InlineData(0xE0B0, 1)]
+    [InlineData(0xE0B4, 1)]
+    [InlineData(0xE0B2, Width - 2)]
+    [InlineData(0xE0B6, Width - 2)]
+    public void Rasterize_PowerlineSeparatorIsWiderThanItsEdgeStripOnTheOuterRows(int codepoint, int innerColumn)
+    {
+        var bitmap = Draw(codepoint);
+
+        Assert.True(At(bitmap, innerColumn, 0) > 0);
+        Assert.True(At(bitmap, innerColumn, Height - 1) > 0);
+    }
+
     [Fact]
     public void Rasterize_RightArrowReachesTheOppositeEdgeOnlyAtItsTip()
     {
