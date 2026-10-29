@@ -10,6 +10,7 @@ public abstract class Element
 {
     internal readonly List<Element> children = [];
     internal bool row;
+    internal bool stack;
     internal float padding;
     internal float gap;
     internal float grow = 1;
@@ -37,6 +38,11 @@ public abstract class Element
         var y = rect.Y + padding;
         var width = rect.W - 2 * padding;
         var height = rect.H - 2 * padding;
+        if (stack)
+        {
+            foreach (var child in children) child.Layout(new Rect(x, y, width, height));
+            return;
+        }
         var free = (row ? width : height) - gap * Math.Max(0, children.Count - 1);
         var grows = 0f;
         foreach (var child in children)
@@ -74,8 +80,10 @@ public abstract class Element<TSelf> : Element where TSelf : Element<TSelf>
 {
     TSelf Self => (TSelf)this;
 
-    public TSelf Row() { row = true; return Self; }
-    public TSelf Column() { row = false; return Self; }
+    public TSelf Row() { row = true; stack = false; return Self; }
+    public TSelf Column() { row = false; stack = false; return Self; }
+    /// Layers every child over the full inner rect, later children on top.
+    public TSelf Stack() { stack = true; return Self; }
     public TSelf Bg(Color color) { bg = color; return Self; }
     public TSelf Rounded(float radius) { this.radius = radius; return Self; }
     public TSelf Border(float width, Color color) { borderWidth = width; borderColor = color; return Self; }

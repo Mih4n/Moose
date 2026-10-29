@@ -41,6 +41,20 @@ public class ElementTests
     }
 
     [Fact]
+    public void Stack_LayersChildrenOverTheInnerRectWithTheLastOnTop()
+    {
+        var bottom = new Div().OnClick(() => { });
+        var top = new Div().OnClick(() => { });
+        var stack = Ui.Stack().Padding(5).Children(bottom, top);
+
+        stack.Layout(new Rect(0, 0, 100, 50));
+
+        Assert.Equal(new Rect(5, 5, 90, 40), bottom.Bounds);
+        Assert.Equal(bottom.Bounds, top.Bounds);
+        Assert.Same(top, stack.HitClick(new(50, 25)));
+    }
+
+    [Fact]
     public void HitClick_ReturnsClickableElementUnderPoint()
     {
         Assert.Same(clickableChild, root.HitClick(new(150, 50)));
