@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Tomlyn.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Moose.Core.Settings;
 
 namespace Moose.Core;
 
@@ -55,7 +56,7 @@ public static class OptionsExtender
             var env = serviceProvider.GetRequiredService<EnvironmentOptions>();
 
             var file = ResolveConfigurationFile(env);
-            builder.Configuration.AddTomlFile(file, optional: false, reloadOnChange: true);
+            builder.Configuration.Add(new TomlIncludeConfigurationSource(file, reloadOnChange: true));
 
             return builder;
         }

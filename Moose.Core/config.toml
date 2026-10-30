@@ -1,6 +1,11 @@
 # Moose — default configuration
 # Copied to $XDG_CONFIG_HOME/moose/config.toml (or ~/.config/moose/config.toml) on first run.
 
+# Split the configuration across files. Paths are relative to this file, `*` matches file names,
+# missing files are skipped. Included files load first and this file overrides them key by key;
+# [[keybindings]] from every file are combined, and the last binding for a chord wins.
+# include = ["keybindings.toml", "conf.d/*.toml"]
+
 [shell]
 # Empty = use $SHELL
 program = ""
