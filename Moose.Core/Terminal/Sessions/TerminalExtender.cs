@@ -12,8 +12,8 @@ public static class TerminalExtender
     {
         public IHostApplicationBuilder AddTerminal()
         {
-            builder.AddOptions<ShellOptions>("shell");
-            builder.AddOptions<ScrollbackOptions>("scrollback");
+            builder.Services.AddSingleton(_ => ShellOptions.Load());
+            builder.Services.AddSingleton(_ => ScrollbackOptions.Load());
             builder.Services.AddSingleton<IPseudoTerminalFactory>(_ => OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()
                 ? new UnixPseudoTerminalFactory()
                 : new UnsupportedPseudoTerminalFactory());

@@ -1,6 +1,6 @@
 using System.Numerics;
 using System.Text;
-using Microsoft.Extensions.Configuration;
+using Moose.Core.Settings;
 using Moose.Graphics.Elements;
 using Moose.Graphics.Primitives;
 using Moose.Graphics.Rendering;
@@ -23,12 +23,11 @@ internal sealed class TextSystem : IDisposable
     public Vector2 Scale { get; set; } = Vector2.One;
     public float DefaultSize { get; }
 
-    public TextSystem(IConfiguration config, IFontLocator locator, IFontRasterizer rasterizer)
+    public TextSystem(FontOptions font, IFontLocator locator, IFontRasterizer rasterizer)
     {
         this.rasterizer = rasterizer;
-        var family = config["font:family"] ?? "monospace";
-        path = locator.Find(family) ?? locator.Find("monospace") ?? throw new FileNotFoundException($"No font file found for family '{family}' or 'monospace'.");
-        DefaultSize = config.GetValue("font:size", 11f);
+        path = locator.Find(font.Family) ?? locator.Find("monospace") ?? throw new FileNotFoundException($"No font file found for family '{font.Family}' or 'monospace'.");
+        DefaultSize = font.Size;
     }
 
     public Vector2 Measure(string text, float size)

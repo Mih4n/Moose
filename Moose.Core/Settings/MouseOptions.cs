@@ -1,9 +1,11 @@
-using Microsoft.Extensions.Configuration;
-
 namespace Moose.Core.Settings;
 
 public sealed class MouseOptions
 {
-    [ConfigurationKeyName("copy_on_select")]
-    public bool CopyOnSelect { get; set; }
+    public bool CopyOnSelect { get; init; }
+
+    public static MouseOptions Load() => new()
+    {
+        CopyOnSelect = Configuration.Bool(Keys.Mouse.CopyOnSelect),
+    };
 }

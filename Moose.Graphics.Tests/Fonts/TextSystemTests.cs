@@ -1,6 +1,6 @@
 using System.Numerics;
 using System.Text;
-using Microsoft.Extensions.Configuration;
+using Moose.Core.Settings;
 using Moose.Graphics.Elements;
 using Moose.Graphics.Fonts;
 using Moose.Graphics.Fonts.FreeType;
@@ -19,10 +19,7 @@ public sealed class TextSystemTests : IDisposable
 
     public TextSystemTests()
     {
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["font:family"] = "monospace" })
-            .Build();
-        textSystem = new TextSystem(config, locator, rasterizer);
+        textSystem = new TextSystem(new FontOptions("monospace", Points), locator, rasterizer);
     }
 
     [Fact]

@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.Metrics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Moose.Core.Settings;
 using Moose.Graphics.Fonts;
 using Moose.Graphics.Fonts.FreeType;
 
@@ -30,6 +31,7 @@ public sealed class MooseAppBuilder(string[] args) : IHostApplicationBuilder
     {
         Services.TryAddSingleton<IFontLocator, FontconfigLocator>();
         Services.TryAddSingleton<IFontRasterizer, FreeTypeRasterizer>();
+        Services.TryAddSingleton(_ => FontOptions.Load());
         Services.TryAddSingleton<TextSystem>();
         Services.TryAddSingleton<AppWindow>();
         return new(host.Build(), window.options);

@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Numerics;
-using Microsoft.Extensions.Configuration;
+using Moose.Core;
 using Moose.Core.Terminal.Grid;
 using Moose.Core.Terminal.Sessions;
 using Moose.Graphics.Elements;
@@ -23,7 +23,6 @@ sealed class RootView : IView, IInputHandler
 {
     readonly TerminalSessionFactory sessionFactory;
     readonly AppWindow window;
-    readonly IConfiguration configuration;
     readonly ConcurrentQueue<Action> mainThread = new();
     readonly List<TerminalTab> tabs = [];
     readonly TerminalView view;
@@ -33,12 +32,11 @@ sealed class RootView : IView, IInputHandler
     TerminalMouseButton? reportedButton;
     (int Column, int Row)? lastReportedCell;
 
-    public RootView(TerminalSessionFactory sessionFactory, AppWindow window, IConfiguration configuration)
+    public RootView(TerminalSessionFactory sessionFactory, AppWindow window)
     {
         this.sessionFactory = sessionFactory;
         this.window = window;
-        this.configuration = configuration;
-        settings = UiSettings.Load(configuration);
+        settings = UiSettings.Load();
         view = new TerminalView(settings);
         OpenTab();
     }
@@ -232,8 +230,8 @@ sealed class RootView : IView, IInputHandler
 
     void ReloadConfiguration()
     {
-        if (configuration is IConfigurationRoot root) root.Reload();
-        settings = UiSettings.Load(configuration);
+        Configuration.Reload();
+        settings = UiSettings.Load();
         view.Configure(settings);
     }
 

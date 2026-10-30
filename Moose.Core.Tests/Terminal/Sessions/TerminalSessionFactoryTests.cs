@@ -21,7 +21,7 @@ public class TerminalSessionFactoryTests
     [Fact]
     public void ResolveStartInfo_UsesConfiguredValuesAndMergesEnvironment()
     {
-        var shell = new ShellOptions { Program = "/bin/sh", Args = ["-l"], WorkingDirectory = "/", Env = new() { ["TERM"] = "xterm-256color" } };
+        var shell = new ShellOptions { Program = "/bin/sh", Args = ["-l"], WorkingDirectory = "/", Env = new Dictionary<string, string> { ["TERM"] = "xterm-256color" } };
 
         var startInfo = Resolve(shell, new EnvironmentOptions("/tmp", "/usr/bin/fish", null));
 

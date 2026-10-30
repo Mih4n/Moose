@@ -27,7 +27,7 @@ sealed class TerminalView
     public TerminalView(UiSettings settings)
     {
         this.settings = settings;
-        palette = new TerminalPalette(settings.Colors);
+        palette = new TerminalPalette();
     }
 
     public int Columns { get; private set; } = 1;
@@ -37,7 +37,7 @@ sealed class TerminalView
     public void Configure(UiSettings settings)
     {
         this.settings = settings;
-        palette = new TerminalPalette(settings.Colors);
+        palette = new TerminalPalette();
     }
 
     public void ChangeFontSize(float delta) => fontSize = Math.Max(MinimumFontSize, (fontSize ?? defaultFontSize) + delta);

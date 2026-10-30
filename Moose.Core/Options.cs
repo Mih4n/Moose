@@ -1,14 +1,19 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
-using Tomlyn.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Moose.Core.Settings;
 
 namespace Moose.Core;
 
 public static class OptionsExtender
 {
+    static readonly Lazy<string> defaultToml = new(() =>
+    {
+        using var reader = new StreamReader(OpenDefaultConfig());
+        return reader.ReadToEnd();
+    });
+
+    /// The built-in config.toml shipped as a resource.
+    internal static string DefaultToml => defaultToml.Value;
+
     private static string ResolveConfigurationFile(EnvironmentOptions options)
     {
         var home = options.HomeConfig ?? options.Home;
@@ -18,14 +23,6 @@ public static class OptionsExtender
         var file = CreateDefaultConfig(directory.FullName);
 
         return file;
-    }
-
-    public static IConfiguration LoadDefaults()
-    {
-        using var stream = OpenDefaultConfig();
-        return new ConfigurationBuilder()
-            .AddTomlStream(stream)
-            .Build();
     }
 
     private static Stream OpenDefaultConfig()
@@ -50,24 +47,12 @@ public static class OptionsExtender
     extension(IHostApplicationBuilder builder)
     {
 
+        /// Loads the built-in defaults with the user's config.toml (and its includes) on top, and points `Configuration` at the result.
         public IHostApplicationBuilder AddTomlConfiguration()
         {
-            using var serviceProvider = builder.Services.BuildServiceProvider();
-            var env = serviceProvider.GetRequiredService<EnvironmentOptions>();
-
-            var file = ResolveConfigurationFile(env);
-            builder.Configuration.Add(new TomlIncludeConfigurationSource(file, reloadOnChange: true));
-
-            return builder;
-        }
-
-        public IHostApplicationBuilder AddOptions<T>(string section) where T : class
-        {
-            var services = builder.Services;
-            var configuration = builder.Configuration;
-
-            services.Configure<T>(configuration.GetSection(section));
-            services.AddSingleton<T>(sp => sp.GetRequiredService<IOptions<T>>().Value);
+            Configuration.Initialize(builder.Configuration);
+            var file = ResolveConfigurationFile(EnvironmentOptions.Load());
+            builder.Configuration.Add(new TomlIncludeConfigurationSource(file, reloadOnChange: true, DefaultToml));
 
             return builder;
         }

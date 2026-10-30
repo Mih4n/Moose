@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
+using Moose.Core.Settings;
 
 namespace Moose.Core;
 
@@ -12,6 +12,10 @@ public record EnvironmentOptions(
 )
 {
     public EnvironmentOptions() : this(null, null, null) { }
+
+    public static EnvironmentOptions Load() => new(Value(Keys.Environment.Home), Value(Keys.Environment.Shell), Value(Keys.Environment.HomeConfig));
+
+    static string? Value(string key) => Configuration.Raw(key) is { Length: > 0 } value ? value : null;
 }
 
 public static class EnvironmentOptionsExtender
@@ -20,18 +24,16 @@ public static class EnvironmentOptionsExtender
     {
         public IHostApplicationBuilder AddEnvironmentOptions()
         {
-            var services = builder.Services;
-            var configuration = builder.Configuration;
             var mapping = new Dictionary<string, string?>()
             {
-                ["Environment:Home"] = Environment.GetEnvironmentVariable("HOME"),
-                ["Environment:Shell"] = Environment.GetEnvironmentVariable("SHELL"),
-                ["Environment:HomeConfig"] = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME")
+                [Keys.Environment.Home] = Environment.GetEnvironmentVariable("HOME"),
+                [Keys.Environment.Shell] = Environment.GetEnvironmentVariable("SHELL"),
+                [Keys.Environment.HomeConfig] = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME")
             };
 
-            configuration.AddInMemoryCollection(mapping);
-            services.Configure<EnvironmentOptions>(configuration.GetSection("Environment"));
-            services.AddSingleton(sp => sp.GetRequiredService<IOptions<EnvironmentOptions>>().Value);
+            builder.Configuration.AddInMemoryCollection(mapping);
+            Configuration.Initialize(builder.Configuration);
+            builder.Services.AddSingleton(_ => EnvironmentOptions.Load());
 
             return builder;
         }
