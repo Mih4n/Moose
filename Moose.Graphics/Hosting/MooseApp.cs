@@ -61,6 +61,7 @@ public sealed class MooseApp(IHost host, WindowOptions window)
                 click = null;
             }
             root.Paint(frame.Scene, renderer.Mouse.Position);
+            if (repeat?.Remaining is { } untilRepeat) renderer.Invalidate(untilRepeat);
         };
         for (var i = middlewares.Count - 1; i >= 0; i--)
         {

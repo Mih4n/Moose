@@ -66,6 +66,13 @@ internal sealed unsafe class VulkanRenderer : IDisposable
     bool resized;
     bool presented;
 
+    // frames are drawn on demand: input, window events and Invalidate() mark the window dirty, otherwise the loop sleeps in WaitEvents
+    readonly Lock wakeLock = new();
+    readonly Timer wakeTimer;
+    long wakeDue = long.MaxValue;
+    int invalidated = 1;
+    volatile bool closed;
+
     public IMouse Mouse { get; }
     public IKeyboard Keyboard { get; }
     public IWindow Window => window;
@@ -82,7 +89,18 @@ internal sealed unsafe class VulkanRenderer : IDisposable
         input = window.CreateInput();
         Mouse = input.Mice[0];
         Keyboard = input.Keyboards[0];
-        window.FramebufferResize += _ => resized = true;
+        window.FramebufferResize += _ => { resized = true; Invalidate(); };
+        window.Resize += _ => Invalidate();
+        window.StateChanged += _ => Invalidate();
+        window.FocusChanged += _ => Invalidate();
+        Keyboard.KeyDown += (_, _, _) => Invalidate();
+        Keyboard.KeyUp += (_, _, _) => Invalidate();
+        Keyboard.KeyChar += (_, _) => Invalidate();
+        Mouse.MouseDown += (_, _) => Invalidate();
+        Mouse.MouseUp += (_, _) => Invalidate();
+        Mouse.MouseMove += (_, _) => Invalidate();
+        Mouse.Scroll += (_, _) => Invalidate();
+        wakeTimer = new Timer(_ => Wake());
 
         CreateInstance();
         CreateDevice();
@@ -94,16 +112,53 @@ internal sealed unsafe class VulkanRenderer : IDisposable
 
     public void Close() => window.Close();
 
+    /// Requests a frame; safe from any thread.
+    public void Invalidate()
+    {
+        Interlocked.Exchange(ref invalidated, 1);
+        if (!closed) window.ContinueEvents();
+    }
+
+    /// Requests a frame once delay has passed; the earliest pending request wins.
+    public void Invalidate(TimeSpan delay)
+    {
+        if (delay <= TimeSpan.Zero)
+        {
+            Invalidate();
+            return;
+        }
+        var due = Environment.TickCount64 + (long)Math.Ceiling(delay.TotalMilliseconds);
+        lock (wakeLock)
+        {
+            if (due >= wakeDue) return;
+            wakeDue = due;
+            wakeTimer.Change(delay, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    void Wake()
+    {
+        lock (wakeLock) wakeDue = long.MaxValue;
+        Invalidate();
+    }
+
     public void Run(Func<Vector2, Frame> buildFrame)
     {
-        window.Render += _ =>
+        window.IsEventDriven = true;
+        while (!window.IsClosing)
         {
-            if (window.FramebufferSize.X == 0 || window.FramebufferSize.Y == 0) return; // minimized
+            window.DoEvents();
+            if (window.IsClosing) break;
+            window.DoUpdate();
+            if (Interlocked.Exchange(ref invalidated, 0) == 0) continue;
+            if (window.FramebufferSize.X == 0 || window.FramebufferSize.Y == 0) continue; // minimized
             if (resized) RecreateSwapchain();
             var frame = buildFrame(new Vector2(window.Size.X, window.Size.Y));
             Draw(frame.Scene, frame.ClearColor);
-        };
-        window.Run();
+        }
+        closed = true;
+        window.DoEvents();
+        window.Reset();
         vk.DeviceWaitIdle(device);
     }
 
@@ -645,6 +700,8 @@ internal sealed unsafe class VulkanRenderer : IDisposable
 
     public void Dispose()
     {
+        closed = true;
+        wakeTimer.Dispose();
         vk.DeviceWaitIdle(device);
         for (var i = 0; i < FramesInFlight; i++)
         {

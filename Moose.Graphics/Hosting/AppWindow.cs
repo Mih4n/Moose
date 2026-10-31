@@ -25,4 +25,9 @@ public sealed class AppWindow
     }
 
     public void Close() => Renderer?.Close();
+
+    /// Asks for a new frame. Frames are only drawn on demand, so state changed outside input handling (pty output, timers) must call this.
+    public void Invalidate() => Renderer?.Invalidate();
+
+    public void Invalidate(TimeSpan delay) => Renderer?.Invalidate(delay);
 }

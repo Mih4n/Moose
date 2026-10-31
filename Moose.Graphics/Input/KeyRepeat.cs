@@ -19,6 +19,8 @@ internal sealed class KeyRepeat(TimeSpan delay, TimeSpan interval)
         if (held == key) held = null;
     }
 
+    public TimeSpan? Remaining => held == null ? null : Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), nextRepeat);
+
     public Key? Due()
     {
         var now = Stopwatch.GetTimestamp();
