@@ -24,7 +24,10 @@ public sealed class Painter
 
     public Vector2 Snap(Vector2 point) => new(MathF.Round(point.X * textSystem.Scale.X) / textSystem.Scale.X, MathF.Round(point.Y * textSystem.Scale.Y) / textSystem.Scale.Y);
 
-    public void Fill(Rect rect, Color color) => scene.Add(new Quad(rect, color, Color.Transparent, 0, 0));
+    public void Fill(Rect rect, Color color, float radius = 0) => scene.Add(new Quad(rect, color, Color.Transparent, radius, 0));
 
     public void Glyph(Rune rune, Vector2 origin, float fontSize, Color color) => textSystem.PaintRune(scene, rune, fontSize, origin, color);
+
+    /// One cell per codepoint from origin, shaped together so ligatures form.
+    public void Glyphs(ReadOnlySpan<int> codepoints, Vector2 origin, float fontSize, Color color) => textSystem.PaintCells(scene, codepoints, fontSize, origin, color);
 }

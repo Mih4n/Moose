@@ -4,6 +4,7 @@ using Moose.Core.Settings;
 using Moose.Graphics.Elements;
 using Moose.Graphics.Fonts;
 using Moose.Graphics.Fonts.FreeType;
+using Moose.Graphics.Fonts.HarfBuzz;
 using Moose.Graphics.Primitives;
 using Moose.Graphics.Rendering;
 
@@ -137,6 +138,46 @@ public sealed class TextSystemTests : IDisposable
         Assert.InRange(textSystem.Measure(truncated, Points).X, 0, maxWidth);
         Assert.True(textSystem.Measure(title[..truncated.Length] + "…", Points).X > maxWidth);
         Assert.Equal("", textSystem.Truncate(title, Points, 0));
+    }
+
+    [Fact]
+    public void PaintCells_PutsEachGlyphInTheCellOfItsCodepoint()
+    {
+        var scene = new List<Quad>();
+        var origin = new Vector2(20, 40);
+        var cell = textSystem.CellSize(Points);
+
+        textSystem.PaintCells(scene, ['a', ' ', 'b', 0x2500], Points, origin, new Color(1, 1, 1));
+
+        Assert.Equal(3, scene.Count);
+        Assert.InRange(scene[0].Rect.X, origin.X, origin.X + cell.X);
+        Assert.InRange(scene[1].Rect.X, origin.X + 2 * cell.X, origin.X + 3 * cell.X);
+        Assert.Equal(origin.X + 3 * cell.X, scene[2].Rect.X, 0.001f);
+        Assert.Equal(cell.X, scene[2].Rect.W, 0.001f);
+    }
+
+    [Fact]
+    public void Shaper_FormsLigaturesOnlyWhenEnabled()
+    {
+        var path = locator.Find("JetBrainsMono Nerd Font");
+        Assert.SkipWhen(path == null || path.Contains("NL"), "needs a JetBrains Mono build with ligatures");
+        using var shaper = new TextShaper(path!);
+
+        var plain = shaper.Shape("->", 16, ligatures: false);
+        var ligated = shaper.Shape("->", 16, ligatures: true);
+
+        Assert.Equal([0, 1], ligated.Select(glyph => glyph.Cluster));
+        Assert.NotEqual(plain.Select(glyph => glyph.Glyph), ligated.Select(glyph => glyph.Glyph));
+    }
+
+    [Fact]
+    public void Shaper_KeepsClustersPerCodepointForCellPlacement()
+    {
+        using var shaper = new TextShaper(locator.Find("monospace")!);
+
+        var glyphs = shaper.Shape([0x1F600, 'a', 'b'], 16);
+
+        Assert.Equal([0, 1, 2], glyphs.Select(glyph => glyph.Cluster));
     }
 
     public void Dispose()

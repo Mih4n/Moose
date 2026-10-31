@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Text;
 using Moose.Core.Settings;
 using Moose.Graphics.Elements;
+using Moose.Graphics.Fonts.HarfBuzz;
 using Moose.Graphics.Primitives;
 using Moose.Graphics.Rendering;
 
@@ -13,9 +14,12 @@ internal sealed class TextSystem : IDisposable
     const string Ellipsis = "…";
 
     readonly IFontRasterizer rasterizer;
+    readonly TextShaper shaper;
+    readonly bool ligatures;
     readonly string path;
     readonly Dictionary<float, IFontFace> faces = [];
     readonly Dictionary<(float PhysicalSize, Rune Rune), (GlyphBitmap Bitmap, Rect Uv)> glyphs = [];
+    readonly Dictionary<(float PhysicalSize, uint Glyph), (GlyphBitmap Bitmap, Rect Uv)> shapedGlyphs = [];
     readonly Dictionary<(float PhysicalSize, Rune Rune), (GlyphBitmap Bitmap, Rect Uv)> cellGlyphs = [];
     readonly Dictionary<float, Vector2> cellSizes = [];
 
@@ -28,6 +32,8 @@ internal sealed class TextSystem : IDisposable
         this.rasterizer = rasterizer;
         path = locator.Find(font.Family) ?? locator.Find("monospace") ?? throw new FileNotFoundException($"No font file found for family '{font.Family}' or 'monospace'.");
         DefaultSize = font.Size;
+        ligatures = font.Ligatures;
+        shaper = new TextShaper(path);
     }
 
     public Vector2 Measure(string text, float size)
@@ -35,7 +41,7 @@ internal sealed class TextSystem : IDisposable
         var physicalSize = PhysicalSize(size);
         var face = Face(physicalSize);
         var width = 0f;
-        foreach (var rune in text.EnumerateRunes()) width += Glyph(face, physicalSize, rune).Bitmap.Advance;
+        foreach (var glyph in shaper.Shape(text, physicalSize)) width += glyph.Advance;
         return new Vector2(MathF.Ceiling(width) / Scale.X, MathF.Ceiling(face.Metrics.LineHeight) / Scale.Y);
     }
 
@@ -58,28 +64,47 @@ internal sealed class TextSystem : IDisposable
         var face = Face(physicalSize);
         var pen = MathF.Round(origin.X * Scale.X);
         var baseline = MathF.Round(origin.Y * Scale.Y + face.Metrics.Ascent);
-        foreach (var rune in text.EnumerateRunes())
+        foreach (var shaped in shaper.Shape(text, physicalSize))
         {
-            var glyph = Glyph(face, physicalSize, rune);
-            AddGlyph(scene, glyph.Bitmap, glyph.Uv, MathF.Round(pen), baseline, color);
-            pen += glyph.Bitmap.Advance;
+            var glyph = ShapedGlyph(face, physicalSize, shaped.Glyph);
+            AddGlyph(scene, glyph.Bitmap, glyph.Uv, MathF.Round(pen + shaped.OffsetX), baseline - MathF.Round(shaped.OffsetY), color);
+            pen += shaped.Advance;
         }
     }
 
-    public void PaintRune(List<Quad> scene, Rune rune, float size, Vector2 origin, Color color)
+    public void PaintRune(List<Quad> scene, Rune rune, float size, Vector2 origin, Color color) => PaintCells(scene, [rune.Value], size, origin, color);
+
+    /// Paints one terminal cell per codepoint starting at origin, shaped as a run so ligatures form.
+    /// Each glyph lands in the cell of its cluster, which keeps ligature fonts (designed as cell-wide pieces) on the grid;
+    /// box drawing and powerline symbols break the run and are drawn procedurally to fill their cell.
+    public void PaintCells(List<Quad> scene, ReadOnlySpan<int> codepoints, float size, Vector2 origin, Color color)
     {
         var physicalSize = PhysicalSize(size);
         var face = Face(physicalSize);
+        var cellWidth = PhysicalCellSize(face, physicalSize).X;
         var left = MathF.Round(origin.X * Scale.X);
         var top = MathF.Round(origin.Y * Scale.Y);
-        if (BoxDrawingRasterizer.Handles(rune))
+        var start = 0;
+        for (var index = 0; index <= codepoints.Length; index++)
         {
-            var cellGlyph = CellGlyph(face, physicalSize, rune);
-            AddGlyph(scene, cellGlyph.Bitmap, cellGlyph.Uv, left, top, color);
-            return;
+            if (index < codepoints.Length && !BoxDrawingRasterizer.Handles(new Rune(codepoints[index]))) continue;
+            if (index > start) PaintShapedCells(scene, codepoints[start..index], face, physicalSize, left + start * cellWidth, top + face.Metrics.Ascent, cellWidth, color);
+            if (index < codepoints.Length)
+            {
+                var cellGlyph = CellGlyph(face, physicalSize, new Rune(codepoints[index]));
+                AddGlyph(scene, cellGlyph.Bitmap, cellGlyph.Uv, left + index * cellWidth, top, color);
+            }
+            start = index + 1;
         }
-        var glyph = Glyph(face, physicalSize, rune);
-        AddGlyph(scene, glyph.Bitmap, glyph.Uv, left, top + face.Metrics.Ascent, color);
+    }
+
+    void PaintShapedCells(List<Quad> scene, ReadOnlySpan<int> codepoints, IFontFace face, float physicalSize, float left, float baseline, float cellWidth, Color color)
+    {
+        foreach (var shaped in shaper.Shape(codepoints, physicalSize, ligatures))
+        {
+            var glyph = ShapedGlyph(face, physicalSize, shaped.Glyph);
+            AddGlyph(scene, glyph.Bitmap, glyph.Uv, left + shaped.Cluster * cellWidth + MathF.Round(shaped.OffsetX), baseline - MathF.Round(shaped.OffsetY), color);
+        }
     }
 
     public Vector2 CellSize(float size)
@@ -127,8 +152,17 @@ internal sealed class TextSystem : IDisposable
         return glyphs[(physicalSize, rune)] = (bitmap, uv);
     }
 
+    (GlyphBitmap Bitmap, Rect Uv) ShapedGlyph(IFontFace face, float physicalSize, uint glyphIndex)
+    {
+        if (shapedGlyphs.TryGetValue((physicalSize, glyphIndex), out var glyph)) return glyph;
+        var bitmap = face.RasterizeGlyph(glyphIndex);
+        var uv = bitmap.Width > 0 && bitmap.Height > 0 ? Atlas.Add(bitmap.Width, bitmap.Height, bitmap.Coverage) ?? default : default;
+        return shapedGlyphs[(physicalSize, glyphIndex)] = (bitmap, uv);
+    }
+
     public void Dispose()
     {
         foreach (var face in faces.Values) face.Dispose();
+        shaper.Dispose();
     }
 }

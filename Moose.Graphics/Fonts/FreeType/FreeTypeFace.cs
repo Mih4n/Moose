@@ -28,9 +28,14 @@ internal sealed unsafe class FreeTypeFace : IFontFace
 
     static float UnitsToPixels(int units, double scale) => (float)Math.Ceiling(units * scale / 65536 / 64);
 
-    public GlyphBitmap Rasterize(Rune rune)
+    public GlyphBitmap Rasterize(Rune rune) =>
+        FT_Load_Char(face, (nuint)rune.Value, FT_LOAD.FT_LOAD_RENDER) == FT_Error.FT_Err_Ok ? Rendered() : Empty;
+
+    public GlyphBitmap RasterizeGlyph(uint glyph) =>
+        FT_Load_Glyph(face, glyph, FT_LOAD.FT_LOAD_RENDER) == FT_Error.FT_Err_Ok ? Rendered() : Empty;
+
+    GlyphBitmap Rendered()
     {
-        if (FT_Load_Char(face, (nuint)rune.Value, FT_LOAD.FT_LOAD_RENDER) != FT_Error.FT_Err_Ok) return Empty;
         var slot = face->glyph;
         var bitmap = slot->bitmap;
         var width = (int)bitmap.width;
