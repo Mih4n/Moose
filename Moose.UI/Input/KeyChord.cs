@@ -26,4 +26,29 @@ readonly record struct KeyChord(Key Key, KeyModifiers Modifiers)
         }
         return key is { } chordKey ? new KeyChord(chordKey, modifiers) : null;
     }
+
+    public override string ToString()
+    {
+        var parts = new List<string>();
+        if (Modifiers.HasFlag(KeyModifiers.Control)) parts.Add("Ctrl");
+        if (Modifiers.HasFlag(KeyModifiers.Shift)) parts.Add("Shift");
+        if (Modifiers.HasFlag(KeyModifiers.Alt)) parts.Add("Alt");
+        if (Modifiers.HasFlag(KeyModifiers.Super)) parts.Add("Super");
+        parts.Add(KeyName(Key));
+        return string.Join('+', parts);
+    }
+
+    static string KeyName(Key key) => key switch
+    {
+        >= Key.Number0 and <= Key.Number9 => ((char)('0' + (key - Key.Number0))).ToString(),
+        Key.Equal => "=",
+        Key.Minus => "-",
+        Key.Comma => ",",
+        Key.Period => ".",
+        Key.Slash => "/",
+        Key.Semicolon => ";",
+        Key.LeftBracket => "[",
+        Key.RightBracket => "]",
+        _ => key.ToString(),
+    };
 }
