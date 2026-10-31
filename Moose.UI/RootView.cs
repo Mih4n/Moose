@@ -7,6 +7,7 @@ using Moose.Core.Terminal.Sessions;
 using Moose.Graphics.Elements;
 using Moose.Graphics.Hosting;
 using Moose.UI.Input;
+using Moose.UI.Palette;
 using Moose.UI.Terminal;
 using Silk.NET.Input;
 using static Moose.Graphics.Elements.Ui;
@@ -26,18 +27,20 @@ sealed class RootView : IView, IInputHandler
     readonly ConcurrentQueue<Action> mainThread = new();
     readonly List<TerminalTab> tabs = [];
     readonly TerminalView view;
+    readonly CommandPalette palette = new();
     UiSettings settings;
     int active;
     bool selecting;
     TerminalMouseButton? reportedButton;
     (int Column, int Row)? lastReportedCell;
+    float wheelRemainder;
 
     public RootView(TerminalSessionFactory sessionFactory, AppWindow window)
     {
         this.sessionFactory = sessionFactory;
         this.window = window;
         settings = UiSettings.Load();
-        view = new TerminalView(settings);
+        view = new TerminalView(settings, window);
         OpenTab();
     }
 
@@ -50,7 +53,7 @@ sealed class RootView : IView, IInputHandler
 
         window.Title = settings.Window.DynamicTitle ? activeTab.Title(dynamic: true) : settings.Window.Title;
         var theme = settings.Theme;
-        return Row()
+        var content = Row()
             .Bg(theme.Background)
             .Children(
                 Column()
@@ -61,6 +64,7 @@ sealed class RootView : IView, IInputHandler
                     .W(1)
                     .Bg(theme.Border),
                 view.Render(activeTab));
+        return palette.IsOpen ? Stack().Children(content, palette.Render(theme, settings.Keybindings, action => RunPaletteAction(action, activeTab))) : content;
     }
 
     Tab TabFor(TerminalTab tab, int index, UiTheme theme) =>
@@ -79,8 +83,16 @@ sealed class RootView : IView, IInputHandler
     public void KeyDown(Key key, GraphicsModifiers modifiers)
     {
         if (ActiveTab is not { } tab) return;
-        var binding = settings.Keybindings.FirstOrDefault(candidate => candidate.Chord == new KeyChord(key, modifiers));
-        if (binding != null)
+        var chord = new KeyChord(key, modifiers);
+        var binding = settings.Keybindings.LastOrDefault(candidate => candidate.Chord == chord);
+        if (palette.IsOpen)
+        {
+            if (binding?.Action == "command_palette") palette.Close();
+            else if (palette.KeyDown(key, modifiers) is { } picked) RunPaletteAction(picked, tab);
+            return;
+        }
+        // "none" unbinds a default chord so it reaches the shell again
+        if (binding is { Action: not "none" })
         {
             RunAction(binding.Action, tab);
             return;
@@ -89,14 +101,14 @@ sealed class RootView : IView, IInputHandler
         var terminalModifiers = (TerminalModifiers)(int)modifiers;
         if (KeyTranslator.Named(key) is { } named)
         {
-            view.RestartBlink();
+            Typed(tab);
             tab.Session.SendKey(named, terminalModifiers);
             return;
         }
         if ((modifiers & (GraphicsModifiers.Control | GraphicsModifiers.Alt)) == 0) return;
         if (KeyTranslator.Character(key, modifiers.HasFlag(GraphicsModifiers.Shift)) is { } character)
         {
-            view.RestartBlink();
+            Typed(tab);
             tab.Session.SendCharacter(character, terminalModifiers);
         }
     }
@@ -104,13 +116,23 @@ sealed class RootView : IView, IInputHandler
     public void TextInput(string text)
     {
         if (ActiveTab is not { } tab) return;
-        view.RestartBlink();
+        if (palette.IsOpen)
+        {
+            palette.TextInput(text);
+            return;
+        }
+        Typed(tab);
         tab.Session.SendText(text);
     }
 
     public void MouseDown(MouseButton button, Vector2 position, GraphicsModifiers modifiers)
     {
-        if (ActiveTab is not { } tab || !view.Contains(position)) return;
+        if (palette.IsOpen || ActiveTab is not { } tab || !view.Contains(position)) return;
+        if (button == MouseButton.Left && view.ScrollbarContains(position))
+        {
+            view.BeginScrollbarDrag(tab, position.Y);
+            return;
+        }
         var cell = view.CellAt(position);
         if (Reports(tab, modifiers) && Translate(button) is { } reported)
         {
@@ -127,7 +149,13 @@ sealed class RootView : IView, IInputHandler
 
     public void MouseMove(Vector2 position)
     {
-        if (ActiveTab is not { } tab) return;
+        if (palette.IsOpen || ActiveTab is not { } tab) return;
+        view.ScrollbarHovered = view.ScrollbarContains(position);
+        if (view.ScrollbarDragging)
+        {
+            view.DragScrollbar(tab, position.Y);
+            return;
+        }
         var cell = view.CellAt(position);
         if (selecting && tab.Selection is { } selection)
         {
@@ -142,6 +170,11 @@ sealed class RootView : IView, IInputHandler
     public void MouseUp(MouseButton button, Vector2 position, GraphicsModifiers modifiers)
     {
         if (ActiveTab is not { } tab) return;
+        if (view.ScrollbarDragging)
+        {
+            view.EndScrollbarDrag();
+            return;
+        }
         if (reportedButton is { } reported)
         {
             var cell = view.CellAt(position);
@@ -157,24 +190,40 @@ sealed class RootView : IView, IInputHandler
 
     public void Scroll(Vector2 position, float delta, GraphicsModifiers modifiers)
     {
+        if (palette.IsOpen)
+        {
+            palette.Scroll(delta);
+            return;
+        }
         if (ActiveTab is not { } tab || !view.Contains(position) || delta == 0) return;
-        var notches = Math.Max(1, (int)MathF.Round(MathF.Abs(delta)));
+        var multiplier = Math.Max(1, settings.Scrollback.Multiplier);
+        bool alternateScreen;
+        lock (tab.Session.SyncRoot) alternateScreen = tab.Session.Screen.IsAlternateScreen;
+        if (!Reports(tab, modifiers) && !alternateScreen)
+        {
+            // one wheel notch = multiplier lines; touchpads send fractions of a notch, which scroll by pixels
+            tab.ScrollPixels(delta * multiplier * view.LineHeight, view.LineHeight);
+            return;
+        }
+        // the application only understands whole steps: collect fractional deltas until they add up to one
+        wheelRemainder += delta;
+        var notches = (int)wheelRemainder;
+        wheelRemainder -= notches;
+        if (notches == 0) return;
         if (Reports(tab, modifiers))
         {
             var cell = view.CellAt(position);
-            var wheel = delta > 0 ? TerminalMouseButton.WheelUp : TerminalMouseButton.WheelDown;
-            for (var notch = 0; notch < notches; notch++) tab.Session.SendMouse(wheel, MouseAction.Press, cell.Column, cell.Row, (TerminalModifiers)(int)modifiers);
+            var wheel = notches > 0 ? TerminalMouseButton.WheelUp : TerminalMouseButton.WheelDown;
+            for (var notch = 0; notch < Math.Abs(notches); notch++) tab.Session.SendMouse(wheel, MouseAction.Press, cell.Column, cell.Row, (TerminalModifiers)(int)modifiers);
             return;
         }
-        var lines = notches * Math.Max(1, settings.Scrollback.Multiplier);
-        bool alternateScreen;
-        lock (tab.Session.SyncRoot) alternateScreen = tab.Session.Screen.IsAlternateScreen;
-        if (alternateScreen)
-        {
-            for (var line = 0; line < lines; line++) tab.Session.SendKey(delta > 0 ? TerminalKey.Up : TerminalKey.Down, TerminalModifiers.None);
-            return;
-        }
-        lock (tab.Session.SyncRoot) tab.Session.Screen.ScrollViewport(delta > 0 ? lines : -lines);
+        for (var line = 0; line < Math.Abs(notches) * multiplier; line++) tab.Session.SendKey(notches > 0 ? TerminalKey.Up : TerminalKey.Down, TerminalModifiers.None);
+    }
+
+    void Typed(TerminalTab tab)
+    {
+        view.RestartBlink();
+        tab.ResetScrollFraction();
     }
 
     public void FocusChanged(bool focused) => ActiveTab?.Session.SetFocus(focused);
@@ -184,23 +233,47 @@ sealed class RootView : IView, IInputHandler
         switch (action)
         {
             case "copy": Copy(tab); break;
-            case "paste": tab.Session.Paste(window.Clipboard); break;
+            case "paste":
+                Typed(tab);
+                tab.Session.Paste(window.Clipboard);
+                break;
             case "font_size_increase": view.ChangeFontSize(1); break;
             case "font_size_decrease": view.ChangeFontSize(-1); break;
             case "font_size_reset": view.ResetFontSize(); break;
             case "scroll_page_up": ScrollPage(tab, 1); break;
             case "scroll_page_down": ScrollPage(tab, -1); break;
+            case "scroll_line_up": ScrollLines(tab, 1); break;
+            case "scroll_line_down": ScrollLines(tab, -1); break;
+            case "scroll_to_top": ScrollToTop(tab); break;
+            case "scroll_to_bottom": ScrollToBottom(tab); break;
             case "new_tab": OpenTab(); break;
+            case "close_tab": CloseTab(tab); break;
+            case "next_tab": SwitchTab(1); break;
+            case "previous_tab": SwitchTab(-1); break;
+            case "command_palette": palette.Open(); break;
             case "new_window": StartNewWindow(); break;
             case "reload_config": ReloadConfiguration(); break;
         }
     }
 
+    void RunPaletteAction(string action, TerminalTab tab)
+    {
+        palette.Close();
+        RunAction(action, tab);
+    }
+
+    void Post(Action action)
+    {
+        mainThread.Enqueue(action);
+        window.Invalidate();
+    }
+
     void OpenTab()
     {
         var tab = new TerminalTab(sessionFactory.Create());
-        tab.Session.Exited += _ => mainThread.Enqueue(() => CloseTab(tab));
-        tab.Session.ClipboardSet += text => mainThread.Enqueue(() => window.Clipboard = text);
+        tab.Session.Changed += window.Invalidate;
+        tab.Session.Exited += _ => Post(() => CloseTab(tab));
+        tab.Session.ClipboardSet += text => Post(() => window.Clipboard = text);
         tabs.Add(tab);
         active = tabs.Count - 1;
     }
@@ -223,9 +296,29 @@ sealed class RootView : IView, IInputHandler
         if (text.Length > 0) window.Clipboard = text;
     }
 
-    void ScrollPage(TerminalTab tab, int direction)
+    void SwitchTab(int direction)
     {
-        lock (tab.Session.SyncRoot) tab.Session.Screen.ScrollViewport(direction * Math.Max(1, view.Rows - 1));
+        if (tabs.Count > 0) active = ((active + direction) % tabs.Count + tabs.Count) % tabs.Count;
+    }
+
+    void ScrollPage(TerminalTab tab, int direction) => ScrollLines(tab, direction * Math.Max(1, view.Rows - 1));
+
+    static void ScrollLines(TerminalTab tab, int lines)
+    {
+        tab.ResetScrollFraction();
+        lock (tab.Session.SyncRoot) tab.Session.Screen.ScrollViewport(lines);
+    }
+
+    static void ScrollToTop(TerminalTab tab)
+    {
+        tab.ResetScrollFraction();
+        lock (tab.Session.SyncRoot) tab.Session.Screen.ScrollViewport(tab.Session.Screen.Scrollback.Count);
+    }
+
+    static void ScrollToBottom(TerminalTab tab)
+    {
+        tab.ResetScrollFraction();
+        lock (tab.Session.SyncRoot) tab.Session.Screen.ResetViewport();
     }
 
     void ReloadConfiguration()

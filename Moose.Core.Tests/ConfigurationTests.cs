@@ -67,7 +67,7 @@ public sealed class ConfigurationTests : IDisposable
     {
         var actions = Configuration.Defaults.GetSection(Keys.Keybindings.Section).GetChildren().Select(binding => binding[Keys.Keybindings.Action]);
 
-        Assert.Contains("new_tab", actions);
+        Assert.Contains("command_palette", actions);
         Assert.Contains("copy", actions);
     }
 
