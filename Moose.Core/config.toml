@@ -20,14 +20,14 @@ COLORTERM = "truecolor"
 family = "JetBrainsMonoNL Nerd Font"
 size = 11.0              # points, like kitty/alacritty (1pt = 96/72 logical px)
 line_height = 1.0
-ligatures = true
+ligatures = true         # shape runs with HarfBuzz so programming ligatures form (needs a font that has them)
 
 [window]
 title = "Moose"
 dynamic_title = true     # let the shell change the title via OSC 0/2
 columns = 120
 rows = 35
-padding_x = 12
+padding_x = 12           # space between the window edge and the grid, logical px
 padding_y = 8
 opacity = 1.0
 decorations = true
@@ -51,6 +51,7 @@ open_urls = true
 audible = false
 visual = false
 
+# Colors anywhere accept "#rgb", "#rrggbb", "#rrggbbaa", "rgb(r, g, b)", "rgba(r, g, b, a)" or [r, g, b(, a)].
 # Gruvbox VSCode Dark Medium (Zed theme terminal colors)
 [colors]
 foreground = "#ebdbb2"
@@ -80,7 +81,7 @@ magenta = "#d3869b"
 cyan    = "#8ec07c"
 white   = "#ebdbb2"
 
-# UI chrome (tab bar etc.). Hex "#rrggbb" or "#rrggbbaa".
+# UI chrome (tab bar etc.).
 [ui.colors]
 background     = "#282828"
 panel          = "#282828"
