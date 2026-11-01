@@ -31,10 +31,11 @@ public sealed class ConfigurationTests : IDisposable
     [Fact]
     public void Getters_FallBackToTheBuiltInDefaultWhenMissingOrMalformed()
     {
-        Use(new() { [Keys.Window.PaddingX] = "wide" });
+        Use(new() { [Keys.Scrollback.Multiplier] = "many" });
 
-        Assert.Equal(12f, Configuration.Float(Keys.Window.PaddingX));
-        Assert.Equal(8f, Configuration.Float(Keys.Window.PaddingY));
+        Assert.Equal(3, Configuration.Int(Keys.Scrollback.Multiplier));
+        Assert.Equal(10000, Configuration.Int(Keys.Scrollback.Lines));
+        Assert.Equal(0f, Configuration.Float(Keys.Window.PaddingX, 12));
         Assert.Equal("beam", Configuration.String(Keys.Cursor.Style));
     }
 
