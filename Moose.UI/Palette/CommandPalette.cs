@@ -39,6 +39,7 @@ sealed class CommandPalette
     public string? KeyDown(Key key, KeyModifiers modifiers)
     {
         var control = modifiers.HasFlag(KeyModifiers.Control);
+        var vim = control || modifiers.HasFlag(KeyModifiers.Alt);
         switch (key)
         {
             case Key.Escape:
@@ -48,19 +49,19 @@ sealed class CommandPalette
             case Key.Enter or Key.KeypadEnter:
                 return matches.Count > 0 ? matches[selected].Action : null;
             case Key.Down or Key.Tab:
-            case Key.J or Key.N when control:
+            case Key.J or Key.N when vim:
                 Move(1);
                 break;
             case Key.Up:
-            case Key.K or Key.P when control:
+            case Key.K or Key.P when vim:
                 Move(-1);
                 break;
             case Key.PageDown:
-            case Key.D when control:
+            case Key.D when vim:
                 Move(VisibleRows / 2, wrap: false);
                 break;
             case Key.PageUp:
-            case Key.U when control:
+            case Key.U when vim:
                 Move(-VisibleRows / 2, wrap: false);
                 break;
             case Key.W when control:

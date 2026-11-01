@@ -146,6 +146,39 @@ action = "scroll_to_top"
 keys = "ctrl+shift+end"
 action = "scroll_to_bottom"
 
+# vim-style navigation; bind any of these to "none" to hand the chord back to the shell
+[[keybindings]]
+keys = "alt+h"
+action = "previous_tab"
+
+[[keybindings]]
+keys = "alt+l"
+action = "next_tab"
+
+[[keybindings]]
+keys = "alt+j"
+action = "scroll_line_down"
+
+[[keybindings]]
+keys = "alt+k"
+action = "scroll_line_up"
+
+[[keybindings]]
+keys = "alt+d"
+action = "scroll_page_down"
+
+[[keybindings]]
+keys = "alt+u"
+action = "scroll_page_up"
+
+[[keybindings]]
+keys = "alt+g"
+action = "scroll_to_top"
+
+[[keybindings]]
+keys = "alt+shift+g"
+action = "scroll_to_bottom"
+
 [[keybindings]]
 keys = "ctrl+shift+t"
 action = "new_tab"
