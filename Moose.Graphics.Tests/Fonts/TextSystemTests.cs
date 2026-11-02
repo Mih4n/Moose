@@ -157,6 +157,26 @@ public sealed class TextSystemTests : IDisposable
     }
 
     [Fact]
+    public void PaintCells_DrawsCharactersTheFontLacksWithAFallbackFont()
+    {
+        const int Han = 0x4E2D;
+        using var primary = new TextShaper(locator.Find("monospace")!);
+        Assert.SkipWhen(primary.Covers(Han), "the monospace font already has the character");
+        Assert.SkipWhen(!locator.FindFallbacks("monospace", new Rune(Han)).Any(), "no installed font has the character");
+        var fallback = new List<Quad>();
+        var missing = new List<Quad>();
+
+        textSystem.PaintCells(fallback, ['a', Han, 'b'], Points, Vector2.Zero, new Color(1, 1, 1));
+        textSystem.PaintCells(missing, ['a', 0x10FFFD, 'b'], Points, Vector2.Zero, new Color(1, 1, 1));
+
+        var cell = textSystem.CellSize(Points);
+        Assert.Equal(3, fallback.Count);
+        Assert.InRange(fallback[1].Rect.X, cell.X, 2 * cell.X);
+        Assert.InRange(fallback[2].Rect.X, 2 * cell.X, 3 * cell.X);
+        Assert.NotEqual(missing[1].Uv, fallback[1].Uv);
+    }
+
+    [Fact]
     public void Shaper_FormsLigaturesOnlyWhenEnabled()
     {
         var path = locator.Find("JetBrainsMono Nerd Font");

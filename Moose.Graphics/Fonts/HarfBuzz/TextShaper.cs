@@ -10,12 +10,16 @@ internal sealed class TextShaper : IDisposable
     readonly Blob blob;
     readonly Face face;
     readonly Dictionary<float, Font> fonts = [];
+    Font? lookup;
 
     public TextShaper(string path)
     {
         blob = Blob.FromFile(path);
         face = new Face(blob, 0);
     }
+
+    /// Whether the font has its own glyph for the codepoint, as opposed to .notdef.
+    public bool Covers(int codepoint) => (lookup ??= new Font(face)).TryGetGlyph(codepoint, out var glyph) && glyph != 0;
 
     public ShapedGlyph[] Shape(string text, float size, bool ligatures = true)
     {
@@ -55,6 +59,7 @@ internal sealed class TextShaper : IDisposable
     public void Dispose()
     {
         foreach (var font in fonts.Values) font.Dispose();
+        lookup?.Dispose();
         face.Dispose();
         blob.Dispose();
     }

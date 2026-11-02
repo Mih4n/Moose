@@ -9,5 +9,6 @@ public static partial class Keys
         public const string Size = "font:size";
         public const string LineHeight = "font:line_height";
         public const string Ligatures = "font:ligatures";
+        public const string Fallback = "font:fallback";
     }
 }
