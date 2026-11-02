@@ -1,4 +1,4 @@
-# Moose - a pretty fast, feature-rich, cross-platform (Linux, macOS) :), GPU-based, thanks Claude, terminal emulator
+# Moose - a pretty fast, feature-rich, cross-platform (Linux only) :), GPU-based, thanks Claude, terminal emulator
 
 The terminal is inspired by the Zed editor and its looks. Also, the main theme is based on [gruvbox-jd](https://github.com/jdinhify/vscode-theme-gruvbox), as I like to call it.
 
