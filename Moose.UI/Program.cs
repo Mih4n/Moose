@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Moose.Core;
 using Moose.Core.Settings;
 using Moose.Core.Terminal.Sessions;
@@ -9,9 +10,15 @@ builder
     .AddEnvironmentOptions()
     .AddTomlConfiguration()
     .AddTerminal();
+var windowOptions = WindowOptions.Load();
 builder.Window(window => window
-    .Title(Configuration.String(Keys.Window.Title, "Moose"))
-    .Size(1024, 768));
+    .Title(windowOptions.Title)
+    .Size(1024, 768)
+    .Decorations(windowOptions.Decorations)
+    .Libdecor(windowOptions.Libdecor));
+
+builder.Services.AddSingleton<RootView>();
+builder.Services.AddSingleton<DebugBounds>();
 
 var app = builder.Build();
 

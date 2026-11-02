@@ -30,7 +30,7 @@ rows = 35
 padding_x = 0            # space between the window edge and the grid, logical px
 padding_y = 0
 opacity = 1.0
-decorations = true
+decorations = true       # title bar and borders; false hides them
 confirm_close = false
 
 [cursor]

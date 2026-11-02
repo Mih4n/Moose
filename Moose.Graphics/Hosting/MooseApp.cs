@@ -13,7 +13,7 @@ using Moose.Graphics.Rendering;
 
 namespace Moose.Graphics.Hosting;
 
-public sealed class MooseApp(IHost host, WindowOptions window)
+public sealed class MooseApp(IHost host, WindowBuilder window)
 {
     readonly List<Action<Frame, Action>> middlewares = [];
 
@@ -24,11 +24,11 @@ public sealed class MooseApp(IHost host, WindowOptions window)
 
     public MooseApp Use(Action<Frame, Action> middleware) { middlewares.Add(middleware); return this; }
 
-    public MooseApp UseEffect<T>() where T : IFrameEffect => Use(ActivatorUtilities.GetServiceOrCreateInstance<T>(Services).Invoke);
+    public MooseApp UseEffect<T>() where T : class, IFrameEffect => Use(Services.GetRequiredService<T>().Invoke);
 
-    public void Run<TView>() where TView : IView
+    public void Run<TView>() where TView : class, IView
     {
-        var view = ActivatorUtilities.GetServiceOrCreateInstance<TView>(Services);
+        var view = Services.GetRequiredService<TView>();
         Run(view.Render, view as IInputHandler);
     }
 
@@ -37,7 +37,7 @@ public sealed class MooseApp(IHost host, WindowOptions window)
         var textSystem = Services.GetRequiredService<TextSystem>();
         var appWindow = Services.GetRequiredService<AppWindow>();
         host.Start();
-        using var renderer = new VulkanRenderer(window, textSystem.Atlas, Services.GetRequiredService<ILogger<VulkanRenderer>>());
+        using var renderer = new VulkanRenderer(window.options, window.libdecor, textSystem.Atlas, Services.GetRequiredService<ILogger<VulkanRenderer>>());
         using var stopping = Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.Register(renderer.Close);
         appWindow.Renderer = renderer;
 

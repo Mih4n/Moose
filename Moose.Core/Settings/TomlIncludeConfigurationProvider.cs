@@ -47,7 +47,7 @@ public sealed class TomlIncludeConfigurationProvider(TomlIncludeConfigurationSou
         return merged;
     }
 
-    static TomlTable Parse(string toml) => TomlSerializer.Deserialize<TomlTable>(toml)!;
+    static TomlTable Parse(string toml) => TomlSerializer.Deserialize(toml, TomlModelContext.Default.TomlTable)!;
 
     static IEnumerable<string> Patterns(object includes) => includes switch
     {

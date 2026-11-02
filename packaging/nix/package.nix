@@ -4,6 +4,7 @@
   buildDotnetModule,
   dotnetCorePackages,
   autoPatchelfHook,
+  zlib,
   shaderc,
   fontconfig,
   glfw,
@@ -56,14 +57,18 @@ buildDotnetModule {
   nugetDeps = ./deps.json;
 
   dotnet-sdk = dotnetCorePackages.sdk_10_0;
-  dotnet-runtime = dotnetCorePackages.runtime_10_0;
+  selfContainedBuild = true;
 
   nativeBuildInputs = [
     autoPatchelfHook
+    stdenv.cc
     shaderc
   ];
 
-  buildInputs = [ stdenv.cc.cc.lib ];
+  buildInputs = [
+    stdenv.cc.cc.lib
+    zlib
+  ];
 
   inherit runtimeDeps;
   passthru = { inherit runtimeDeps; };
@@ -73,6 +78,7 @@ buildDotnetModule {
   makeWrapperArgs = [ "--prefix PATH : ${lib.makeBinPath [ fontconfig.bin ]}" ];
 
   postInstall = ''
+    rm -f $out/lib/moose/*.dbg $out/lib/moose/*.pdb
     install -Dm644 ${../io.github.mih4n.Moose.desktop} $out/share/applications/io.github.mih4n.Moose.desktop
     install -Dm644 ${../io.github.mih4n.Moose.svg} $out/share/icons/hicolor/scalable/apps/io.github.mih4n.Moose.svg
   '';

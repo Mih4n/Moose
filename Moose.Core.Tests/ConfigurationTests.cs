@@ -40,6 +40,17 @@ public sealed class ConfigurationTests : IDisposable
     }
 
     [Fact]
+    public void WindowOptions_HiddenDecorationsNeverLoadLibdecor()
+    {
+        Use(new() { [Keys.Window.Decorations] = "false" });
+
+        var window = WindowOptions.Load();
+
+        Assert.False(window.Decorations);
+        Assert.False(window.Libdecor);
+    }
+
+    [Fact]
     public void Getters_UseTheFallbackForKeysWithoutAnyDefault()
     {
         Use([]);

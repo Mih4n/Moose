@@ -60,11 +60,6 @@
     "hash": "sha256-//+jjPt3w9x0RYZ340dfiwbroRMggqhUW4DEc2x5zcg="
   },
   {
-    "pname": "Microsoft.Extensions.Configuration.FileExtensions",
-    "version": "10.0.6",
-    "hash": "sha256-N2DeLcgzjaQIk7LKvUqd2FO2bTmB65iZxpbTXb2DWz8="
-  },
-  {
     "pname": "Microsoft.Extensions.Configuration.Json",
     "version": "10.0.14",
     "hash": "sha256-Hk4XSD1jsaU3GBrBNo/hH/wV7DfZaarRnmu6x6HN9QM="
@@ -243,11 +238,6 @@
     "pname": "Tomlyn",
     "version": "2.10.1",
     "hash": "sha256-Dcceh+BjppBtDoSLydw7K8v5cEI9HGEIy2OEsosW2kM="
-  },
-  {
-    "pname": "Tomlyn.Extensions.Configuration",
-    "version": "2.0.1",
-    "hash": "sha256-r5say9ZwfRrfe2mxaGyEGU8Vn+28+PHpJxaZvZqS82E="
   },
   {
     "pname": "Ultz.Native.GLFW",

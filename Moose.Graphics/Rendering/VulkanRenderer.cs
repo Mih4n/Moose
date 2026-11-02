@@ -3,9 +3,11 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Silk.NET.Core.Native;
 using Silk.NET.Input;
+using Silk.NET.Input.Glfw;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
 using Silk.NET.Windowing;
+using Silk.NET.Windowing.Glfw;
 using Buffer = Silk.NET.Vulkan.Buffer;
 using Semaphore = Silk.NET.Vulkan.Semaphore;
 using Moose.Graphics.Hosting;
@@ -17,6 +19,8 @@ namespace Moose.Graphics.Rendering;
 internal sealed unsafe class VulkanRenderer : IDisposable
 {
     const int FramesInFlight = 2;
+    const int WaylandLibdecorHint = 0x00053001;
+    const int WaylandDisableLibdecor = 0x00038002;
     const int MaxQuads = 131072; // shortcut: fixed per-frame instance buffer (~9 MB per frame in flight) sized for a full-screen terminal grid on a 4K display; extra quads are dropped
 
     readonly IWindow window;
@@ -79,10 +83,14 @@ internal sealed unsafe class VulkanRenderer : IDisposable
     /// Framebuffer px per logical px, exactly the mapping the viewport applies.
     public Vector2 Scale => new((float)extent.Width / window.Size.X, (float)extent.Height / window.Size.Y);
 
-    public VulkanRenderer(WindowOptions options, GlyphAtlas atlas, ILogger logger)
+    public VulkanRenderer(WindowOptions options, bool libdecor, GlyphAtlas atlas, ILogger logger)
     {
         this.logger = logger;
         this.atlas = atlas;
+        // Silk initializes GLFW on first use of its provider, so the hint goes through a separate handle to the same library
+        if (!libdecor) Silk.NET.GLFW.Glfw.GetApi().InitHint((Silk.NET.GLFW.InitHint)WaylandLibdecorHint, WaylandDisableLibdecor);
+        GlfwWindowing.RegisterPlatform();
+        GlfwInput.RegisterPlatform();
         window = Silk.NET.Windowing.Window.Create(options);
         window.Initialize();
         if (window.VkSurface is null) throw new PlatformNotSupportedException("Windowing platform doesn't support Vulkan.");

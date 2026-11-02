@@ -34,6 +34,6 @@ public sealed class MooseAppBuilder(string[] args) : IHostApplicationBuilder
         Services.TryAddSingleton(_ => FontOptions.Load());
         Services.TryAddSingleton<TextSystem>();
         Services.TryAddSingleton<AppWindow>();
-        return new(host.Build(), window.options);
+        return new(host.Build(), window);
     }
 }
