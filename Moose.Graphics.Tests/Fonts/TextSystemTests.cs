@@ -160,7 +160,8 @@ public sealed class TextSystemTests : IDisposable
     public void Shaper_FormsLigaturesOnlyWhenEnabled()
     {
         var path = locator.Find("JetBrainsMono Nerd Font");
-        Assert.SkipWhen(path == null || path.Contains("NL"), "needs a JetBrains Mono build with ligatures");
+        var file = Path.GetFileName(path) ?? "";
+        Assert.SkipWhen(!file.StartsWith("JetBrainsMono") || file.Contains("NL"), "needs a JetBrains Mono build with ligatures");
         using var shaper = new TextShaper(path!);
 
         var plain = shaper.Shape("->", 16, ligatures: false);
