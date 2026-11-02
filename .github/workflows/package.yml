@@ -87,12 +87,10 @@ jobs:
           name: publish
           path: publish
 
-      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
-        with:
-          bundle: Moose.flatpak
-          manifest-path: packaging/flatpak/io.github.mih4n.Moose.yml
-          cache-key: flatpak-builder-${{ github.sha }}
-          upload-artifact: false
+      - name: Build Flatpak
+        run: |
+          flatpak-builder --disable-rofiles-fuse --repo=repo --force-clean build packaging/flatpak/io.github.mih4n.Moose.yml
+          flatpak build-bundle repo Moose.flatpak io.github.mih4n.Moose
 
       - uses: actions/upload-artifact@v4
         with:
