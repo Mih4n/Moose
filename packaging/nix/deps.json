@@ -175,24 +175,14 @@
     "hash": "sha256-LgrnZcux09Vx7JUlfH4+ycJZO5Iv6PSy+5kV+I6owwE="
   },
   {
-    "pname": "Silk.NET.GLFW",
-    "version": "2.23.0",
-    "hash": "sha256-kSQbC+gTLvhEWnkKWQCwSsGuDIGV209isyzlrFDSOxU="
-  },
-  {
-    "pname": "Silk.NET.Input",
-    "version": "2.23.0",
-    "hash": "sha256-eHQR7IBgwstnS80ZDa2vIg902iYlFggPKiEIVol7V2Y="
-  },
-  {
     "pname": "Silk.NET.Input.Common",
     "version": "2.23.0",
     "hash": "sha256-gg9EC1xS6gyjP/SrvlKinqnTBK+GNEtqUVHragousWw="
   },
   {
-    "pname": "Silk.NET.Input.Glfw",
+    "pname": "Silk.NET.Input.Sdl",
     "version": "2.23.0",
-    "hash": "sha256-GgwsvmrwVyBcSF8QBqGjlJVFFIAxlLPIaJqdxudAhO4="
+    "hash": "sha256-4rOpFPS6VMUQGBIrxEIYMERWjGolBcOpCL8zGCHCdwY="
   },
   {
     "pname": "Silk.NET.Maths",
@@ -205,6 +195,11 @@
     "hash": "sha256-zK9TzX0EP2awNepYSc8xskel/M7YKiFGlQAxTij/Wkw="
   },
   {
+    "pname": "Silk.NET.SDL",
+    "version": "2.23.0",
+    "hash": "sha256-c6seV+4wwkL73ArxqwTzKGo/cSWaKkasXvSIJwDIwH8="
+  },
+  {
     "pname": "Silk.NET.Vulkan",
     "version": "2.23.0",
     "hash": "sha256-bXlKSRPHb4tEZ8hum0gLtzLZuRPHY0iPKfZu5vnk5SE="
@@ -215,19 +210,14 @@
     "hash": "sha256-9kYroJsQohE3EN1Roxp7YeBFuCm3iq4nuS9AINZFMNw="
   },
   {
-    "pname": "Silk.NET.Windowing",
-    "version": "2.23.0",
-    "hash": "sha256-YNF5lB/2v01vTkbfUWVbpQD5y72zDqLcx7JFcfdc+mY="
-  },
-  {
     "pname": "Silk.NET.Windowing.Common",
     "version": "2.23.0",
     "hash": "sha256-abwAZM9952XoEfng91UsCBSJNHRI5wqJy8LgPh0BLhY="
   },
   {
-    "pname": "Silk.NET.Windowing.Glfw",
+    "pname": "Silk.NET.Windowing.Sdl",
     "version": "2.23.0",
-    "hash": "sha256-jxZMuUUqt+AUWy5h0BRzA8gyD2rWqWMrJPtgd4h6ANY="
+    "hash": "sha256-/W5EF/meZOxlaYGEBMkOVORYV82bQS+YzKAdyX6lnhQ="
   },
   {
     "pname": "System.Diagnostics.EventLog",
@@ -240,8 +230,8 @@
     "hash": "sha256-Dcceh+BjppBtDoSLydw7K8v5cEI9HGEIy2OEsosW2kM="
   },
   {
-    "pname": "Ultz.Native.GLFW",
-    "version": "3.4.0",
-    "hash": "sha256-+BIUZO+IwVvBxCHaTjnEApoRbYmU04pgD7uejZidE74="
+    "pname": "Ultz.Native.SDL",
+    "version": "2.32.10",
+    "hash": "sha256-feUKsImlFaX3jgCzr9lcoPfQSWQHqQEWjvXx3AJBqGM="
   }
 ]

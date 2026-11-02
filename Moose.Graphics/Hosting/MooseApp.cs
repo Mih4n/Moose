@@ -96,6 +96,7 @@ public sealed class MooseApp(IHost host, WindowBuilder window)
         renderer.Mouse.MouseMove += (_, position) => input.MouseMove(position);
         renderer.Mouse.Scroll += (mouse, wheel) => input.Scroll(mouse.Position, wheel.Y, Modifiers(keyboard));
         renderer.Window.FocusChanged += input.FocusChanged;
+        renderer.Window.FileDrop += input.FileDrop;
         return repeat;
     }
 

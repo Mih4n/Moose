@@ -228,6 +228,13 @@ sealed class RootView : IView, IInputHandler
 
     public void FocusChanged(bool focused) => ActiveTab?.Session.SetFocus(focused);
 
+    public void FileDrop(string[] paths)
+    {
+        if (palette.IsOpen || ActiveTab is not { } tab || paths.Length == 0) return;
+        Typed(tab);
+        tab.Session.Paste(string.Join(' ', paths) + " ");
+    }
+
     void RunAction(string action, TerminalTab tab)
     {
         switch (action)
@@ -250,9 +257,12 @@ sealed class RootView : IView, IInputHandler
             case "close_tab": CloseTab(tab); break;
             case "next_tab": SwitchTab(1); break;
             case "previous_tab": SwitchTab(-1); break;
-            case "command_palette": palette.Open(); break;
+            case "command_palette": palette.Open(tabs.Select((candidate, index) => Command.SwitchTab(index, candidate.Title(settings.Window.DynamicTitle)))); break;
             case "new_window": StartNewWindow(); break;
             case "reload_config": ReloadConfiguration(); break;
+            default:
+                if (Command.TabIndex(action) is { } index && index < tabs.Count) active = index;
+                break;
         }
     }
 

@@ -3,11 +3,12 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Silk.NET.Core.Native;
 using Silk.NET.Input;
-using Silk.NET.Input.Glfw;
+using Silk.NET.Maths;
+using Silk.NET.Input.Sdl;
 using Silk.NET.Vulkan;
 using Silk.NET.Vulkan.Extensions.KHR;
 using Silk.NET.Windowing;
-using Silk.NET.Windowing.Glfw;
+using Silk.NET.Windowing.Sdl;
 using Buffer = Silk.NET.Vulkan.Buffer;
 using Semaphore = Silk.NET.Vulkan.Semaphore;
 using Moose.Graphics.Hosting;
@@ -19,11 +20,10 @@ namespace Moose.Graphics.Rendering;
 internal sealed unsafe class VulkanRenderer : IDisposable
 {
     const int FramesInFlight = 2;
-    const int WaylandLibdecorHint = 0x00053001;
-    const int WaylandDisableLibdecor = 0x00038002;
     const int MaxQuads = 131072; // shortcut: fixed per-frame instance buffer (~9 MB per frame in flight) sized for a full-screen terminal grid on a 4K display; extra quads are dropped
 
     readonly IWindow window;
+    readonly Silk.NET.SDL.Sdl sdl;
     readonly IInputContext input;
     readonly ILogger logger;
     readonly GlyphAtlas atlas;
@@ -83,14 +83,28 @@ internal sealed unsafe class VulkanRenderer : IDisposable
     /// Framebuffer px per logical px, exactly the mapping the viewport applies.
     public Vector2 Scale => new((float)extent.Width / window.Size.X, (float)extent.Height / window.Size.Y);
 
+    // Silk reports the window size as the framebuffer size of Vulkan windows; the drawable size is in pixels
+    Vector2D<int> FramebufferSize
+    {
+        get
+        {
+            int width, height;
+            sdl.VulkanGetDrawableSize((Silk.NET.SDL.Window*)window.Native!.Sdl!.Value, &width, &height);
+            return new(width, height);
+        }
+    }
+
     public VulkanRenderer(WindowOptions options, bool libdecor, GlyphAtlas atlas, ILogger logger)
     {
         this.logger = logger;
         this.atlas = atlas;
-        // Silk initializes GLFW on first use of its provider, so the hint goes through a separate handle to the same library
-        if (!libdecor) Silk.NET.GLFW.Glfw.GetApi().InitHint((Silk.NET.GLFW.InitHint)WaylandLibdecorHint, WaylandDisableLibdecor);
-        GlfwWindowing.RegisterPlatform();
-        GlfwInput.RegisterPlatform();
+        sdl = Silk.NET.SDL.Sdl.GetApi();
+        sdl.SetHint("SDL_VIDEODRIVER", "wayland,x11");
+        // sdl2-compat turns on scale-to-display for SDL2 clients, which reports pixels as window coordinates
+        sdl.SetHintWithPriority("SDL_VIDEO_WAYLAND_SCALE_TO_DISPLAY", "0", Silk.NET.SDL.HintPriority.Override);
+        if (!libdecor) sdl.SetHint("SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR", "0");
+        SdlWindowing.RegisterPlatform();
+        SdlInput.RegisterPlatform();
         window = Silk.NET.Windowing.Window.Create(options);
         window.Initialize();
         if (window.VkSurface is null) throw new PlatformNotSupportedException("Windowing platform doesn't support Vulkan.");
@@ -98,9 +112,10 @@ internal sealed unsafe class VulkanRenderer : IDisposable
         Mouse = input.Mice[0];
         Keyboard = input.Keyboards[0];
         window.FramebufferResize += _ => { resized = true; Invalidate(); };
-        window.Resize += _ => Invalidate();
+        window.Resize += _ => { resized = true; Invalidate(); };
         window.StateChanged += _ => Invalidate();
         window.FocusChanged += _ => Invalidate();
+        window.FileDrop += _ => Invalidate();
         Keyboard.KeyDown += (_, _, _) => Invalidate();
         Keyboard.KeyUp += (_, _, _) => Invalidate();
         Keyboard.KeyChar += (_, _) => Invalidate();
@@ -159,7 +174,8 @@ internal sealed unsafe class VulkanRenderer : IDisposable
             if (window.IsClosing) break;
             window.DoUpdate();
             if (Interlocked.Exchange(ref invalidated, 0) == 0) continue;
-            if (window.FramebufferSize.X == 0 || window.FramebufferSize.Y == 0) continue; // minimized
+            var framebuffer = FramebufferSize;
+            if (framebuffer.X == 0 || framebuffer.Y == 0) continue; // minimized
             if (resized) RecreateSwapchain();
             var frame = buildFrame(new Vector2(window.Size.X, window.Size.Y));
             Draw(frame.Scene, frame.ClearColor);
@@ -278,7 +294,7 @@ internal sealed unsafe class VulkanRenderer : IDisposable
         format = formats.FirstOrDefault(f => f.Format == Format.B8G8R8A8Unorm, formats[0]);
 
         // Wayland reports currentExtent = 0xFFFFFFFF: the swapchain decides, so take the framebuffer size
-        var fb = window.FramebufferSize;
+        var fb = FramebufferSize;
         extent = caps.CurrentExtent.Width != uint.MaxValue ? caps.CurrentExtent : new Extent2D(
             Math.Clamp((uint)fb.X, caps.MinImageExtent.Width, caps.MaxImageExtent.Width),
             Math.Clamp((uint)fb.Y, caps.MinImageExtent.Height, caps.MaxImageExtent.Height));
@@ -595,7 +611,10 @@ internal sealed unsafe class VulkanRenderer : IDisposable
         vk.ResetFences(device, 1, in fence);
 
         var count = Math.Min(scene.Count, MaxQuads);
-        CollectionsMarshal.AsSpan(scene)[..count].CopyTo(new Span<Quad>((void*)quadMapped[frameIndex], count));
+        var quads = new Span<Quad>((void*)quadMapped[frameIndex], count);
+        CollectionsMarshal.AsSpan(scene)[..count].CopyTo(quads);
+        var scale = Scale;
+        for (var index = 0; index < count; index++) quads[index] = PixelSnap.Apply(quads[index], scale);
 
         var cmd = cmds[frameIndex];
         var image = images[imageIndex];

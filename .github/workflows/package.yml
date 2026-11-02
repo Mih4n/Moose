@@ -31,6 +31,11 @@ jobs:
           dotnet publish Moose.UI --configuration Release --runtime linux-x64 --output publish
           rm -f publish/*.dbg publish/*.pdb
 
+      - name: Build SDL3 and sdl2-compat
+        run: |
+          sudo apt-get install -y cmake ninja-build libwayland-dev wayland-protocols libxkbcommon-dev libdecor-0-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev libudev-dev libdbus-1-dev libegl-dev
+          bash packaging/sdl/build.sh publish
+
       - uses: actions/upload-artifact@v4
         with:
           name: publish

@@ -24,11 +24,13 @@ sealed class CommandPalette
     int selected;
     int scroll;
     List<Command> matches = [];
+    IReadOnlyList<Command> commands = Command.All;
 
     public bool IsOpen { get; private set; }
 
-    public void Open()
+    public void Open(IEnumerable<Command> extra)
     {
+        commands = [.. Command.All, .. extra];
         IsOpen = true;
         query = "";
         Refilter();
@@ -176,7 +178,7 @@ sealed class CommandPalette
 
     void Refilter()
     {
-        matches = [.. Command.All
+        matches = [.. commands
             .Select((command, order) => (command, order, score: FuzzyMatcher.Score(query, command.Title) ?? FuzzyMatcher.Score(query, command.Action)))
             .Where(candidate => candidate.score != null)
             .OrderBy(candidate => candidate.score)

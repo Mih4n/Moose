@@ -7,7 +7,7 @@
   zlib,
   shaderc,
   fontconfig,
-  glfw,
+  SDL2,
   vulkan-loader,
   wayland,
   libxkbcommon,
@@ -23,7 +23,7 @@
 
 let
   runtimeDeps = [
-    glfw
+    SDL2
     vulkan-loader
     wayland
     libxkbcommon
@@ -78,7 +78,7 @@ buildDotnetModule {
   makeWrapperArgs = [ "--prefix PATH : ${lib.makeBinPath [ fontconfig.bin ]}" ];
 
   postInstall = ''
-    rm -f $out/lib/moose/*.dbg $out/lib/moose/*.pdb
+    rm -f $out/lib/moose/*.dbg $out/lib/moose/*.pdb $out/lib/moose/libSDL2-2.0.so
     install -Dm644 ${../io.github.mih4n.Moose.desktop} $out/share/applications/io.github.mih4n.Moose.desktop
     install -Dm644 ${../io.github.mih4n.Moose.svg} $out/share/icons/hicolor/scalable/apps/io.github.mih4n.Moose.svg
   '';

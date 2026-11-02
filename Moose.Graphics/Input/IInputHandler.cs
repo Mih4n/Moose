@@ -18,4 +18,6 @@ public interface IInputHandler
     void Scroll(Vector2 position, float delta, KeyModifiers modifiers) { }
 
     void FocusChanged(bool focused) { }
+
+    void FileDrop(string[] paths) { }
 }

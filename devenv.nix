@@ -2,7 +2,7 @@
 
 let
   runtimeLibs = with pkgs; [
-    glfw
+    SDL2
     vulkan-loader
     wayland
     libxkbcommon

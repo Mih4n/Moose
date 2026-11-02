@@ -2,6 +2,13 @@ namespace Moose.UI.Palette;
 
 sealed record Command(string Action, string Title)
 {
+    const string SwitchTabPrefix = "switch_tab:";
+
+    public static Command SwitchTab(int index, string title) => new($"{SwitchTabPrefix}{index}", $"Tab: {title}");
+
+    public static int? TabIndex(string action) =>
+        action.StartsWith(SwitchTabPrefix, StringComparison.Ordinal) && int.TryParse(action[SwitchTabPrefix.Length..], out var index) ? index : null;
+
     public static IReadOnlyList<Command> All { get; } =
     [
         new("new_tab", "New tab"),

@@ -10,8 +10,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <PackageReference Include="Silk.NET.Windowing" />
-    <PackageReference Include="Silk.NET.Input" />
+    <PackageReference Include="Silk.NET.Windowing.Sdl" />
+    <PackageReference Include="Silk.NET.Input.Sdl" />
     <PackageReference Include="Silk.NET.OpenGL" />
     <PackageReference Include="Silk.NET.Vulkan" />
     <PackageReference Include="Silk.NET.Vulkan.Extensions.KHR" />
