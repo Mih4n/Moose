@@ -13,7 +13,7 @@ sealed class Tab : Element<Tab>
             .OnClick(close)
             .Hover(style => style.Color(theme.Text));
         Column()
-            .H(37)
+            .H(36 + theme.BorderWidth)
             .Bg(active ? theme.Selected : theme.Panel)
             .Children(
                 Ui.Row()
@@ -26,8 +26,8 @@ sealed class Tab : Element<Tab>
                             .Color(active ? theme.Text : theme.TextMuted),
                         closeButton),
                 Div()
-                    .H(1)
-                    .Bg(theme.BorderVariant));
+                    .H(theme.BorderWidth)
+                    .Bg(theme.Border));
         Hover(style =>
         {
             if (!active) style.Bg(theme.Hover);

@@ -8,19 +8,21 @@ public sealed class TerminalSessionFactory(IPseudoTerminalFactory ptyFactory, Sh
 {
     const string FallbackShell = "/bin/sh";
 
-    public TerminalSession Create() => new(ptyFactory, ResolveStartInfo(), scrollback.Lines);
+    public TerminalSession Create(TabLayout? tab = null) => new(ptyFactory, ResolveStartInfo(tab), scrollback.Lines);
 
-    public ShellStartInfo ResolveStartInfo()
+    /// The [shell] settings, with whatever the layout's tab sets taking precedence.
+    public ShellStartInfo ResolveStartInfo(TabLayout? tab = null)
     {
-        var program = FirstNonEmpty(shell.Program, environment.Shell) ?? FallbackShell;
+        var program = FirstNonEmpty(tab?.Program, shell.Program, environment.Shell) ?? FallbackShell;
+        IReadOnlyList<string> arguments = tab?.Args ?? (FirstNonEmpty(tab?.Program) != null ? [] : shell.Args);
         var home = FirstNonEmpty(environment.Home) ?? "/";
-        var workingDirectory = FirstNonEmpty(shell.WorkingDirectory) is { } configured && Directory.Exists(configured) ? configured : home;
+        var workingDirectory = new[] { tab?.WorkingDirectory, shell.WorkingDirectory }.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate) && Directory.Exists(candidate)) ?? home;
 
         var variables = new Dictionary<string, string>();
         foreach (DictionaryEntry entry in Environment.GetEnvironmentVariables()) variables[(string)entry.Key] = (string?)entry.Value ?? "";
         foreach (var variable in shell.Env) variables[variable.Key] = variable.Value;
 
-        return new ShellStartInfo(program, shell.Args, workingDirectory, variables);
+        return new ShellStartInfo(program, arguments, workingDirectory, variables);
     }
 
     static string? FirstNonEmpty(params string?[] candidates) => candidates.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate));

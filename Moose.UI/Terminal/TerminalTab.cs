@@ -4,7 +4,8 @@ using Moose.Core.Terminal.Sessions;
 
 namespace Moose.UI.Terminal;
 
-sealed class TerminalTab(TerminalSession session) : IDisposable
+/// layout is what the tab was opened from: its title names the tab, and its program is kept when the session is saved.
+sealed class TerminalTab(TerminalSession session, TabLayout? layout = null) : IDisposable
 {
     bool startFailed;
     // sub-line scroll: how many logical px of the line above the viewport are scrolled into view;
@@ -14,9 +15,14 @@ sealed class TerminalTab(TerminalSession session) : IDisposable
 
     public TerminalSession Session => session;
     public Selection? Selection { get; set; }
+    /// Set by the user; replaces the title the shell sets until cleared.
+    public string? Name { get; set; } = layout?.Title;
+
+    public TabLayout Snapshot() => new(Name, layout?.Program, layout?.Args, session.WorkingDirectory);
 
     public string Title(bool dynamic)
     {
+        if (Name is { } name) return name;
         string title;
         lock (session.SyncRoot) title = session.Screen.Title;
         return dynamic && !string.IsNullOrWhiteSpace(title) ? title : Path.GetFileName(session.StartInfo.Program);

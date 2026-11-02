@@ -18,6 +18,8 @@ public static class TerminalExtender
                 ? new UnixPseudoTerminalFactory()
                 : new UnsupportedPseudoTerminalFactory());
             builder.Services.AddSingleton<TerminalSessionFactory>();
+            builder.Services.AddSingleton(_ => SessionOptions.Load());
+            builder.Services.AddSingleton<SessionStore>();
             return builder;
         }
     }

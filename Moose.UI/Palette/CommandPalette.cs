@@ -25,12 +25,27 @@ sealed class CommandPalette
     int scroll;
     List<Command> matches = [];
     IReadOnlyList<Command> commands = Command.All;
+    // set while the palette asks for free text instead of filtering commands
+    Func<string, Command?>? prompt;
+    string placeholder = "";
 
     public bool IsOpen { get; private set; }
 
     public void Open(IEnumerable<Command> extra)
     {
         commands = [.. Command.All, .. extra];
+        prompt = null;
+        placeholder = "Type a command…";
+        IsOpen = true;
+        query = "";
+        Refilter();
+    }
+
+    /// Asks for text; the only row is the command built from what's typed so far.
+    public void Prompt(string hint, Func<string, Command?> command)
+    {
+        prompt = command;
+        placeholder = hint;
         IsOpen = true;
         query = "";
         Refilter();
@@ -88,18 +103,20 @@ sealed class CommandPalette
         foreach (var binding in keybindings) hints[binding.Action] = binding.Chord.ToString();
         var rows = Math.Max(1, Math.Min(VisibleRows, matches.Count));
         var listHeight = rows * RowHeight + 2 * ListPadding;
+        // the border is drawn inside the panel, so the content is inset by it on every side, plus the divider below the input
+        var panelHeight = InputHeight + listHeight + 3 * theme.BorderWidth;
 
         var panel = Column()
-            .H(InputHeight + listHeight + 3)
-            .Padding(1)
+            .H(panelHeight)
+            .Padding(theme.BorderWidth)
             .Rounded(8)
             .Bg(theme.Panel)
-            .Border(1, theme.BorderVariant)
+            .Border(theme.BorderWidth, theme.BorderVariant)
             .OnClick(() => { })
             .Children(
                 Input(theme),
                 Div()
-                    .H(1)
+                    .H(theme.BorderWidth)
                     .Bg(theme.Border),
                 Row()
                     .H(listHeight)
@@ -113,7 +130,7 @@ sealed class CommandPalette
             .Children(
                 Div().H(TopOffset),
                 Row()
-                    .H(InputHeight + listHeight + 3)
+                    .H(panelHeight)
                     .Children(Div(), panel.W(Width), Div()),
                 Div());
     }
@@ -128,13 +145,13 @@ sealed class CommandPalette
             .Padding(10)
             .Children(query.Length > 0
                 ? [Text(query).Color(theme.Text), caret, Div()]
-                : [caret, Text("Type a command…").Truncate().Color(theme.TextMuted)]);
+                : [caret, Text(placeholder).Truncate().Color(theme.TextMuted)]);
     }
 
     Element List(UiTheme theme, Dictionary<string, string> hints, Action<string> run)
     {
         if (matches.Count == 0)
-            return Column().Child(Text("No matching commands").Padding(6).Color(theme.TextMuted));
+            return Column().Child(Text(prompt != null ? placeholder : "No matching commands").Padding(6).Color(theme.TextMuted));
         return Column().Children(matches.Skip(scroll).Take(VisibleRows).Select((command, offset) =>
         {
             var current = scroll + offset == selected;
@@ -178,14 +195,19 @@ sealed class CommandPalette
 
     void Refilter()
     {
+        selected = 0;
+        scroll = 0;
+        if (prompt != null)
+        {
+            matches = prompt(query.Trim()) is { } command ? [command] : [];
+            return;
+        }
         matches = [.. commands
             .Select((command, order) => (command, order, score: FuzzyMatcher.Score(query, command.Title) ?? FuzzyMatcher.Score(query, command.Action)))
             .Where(candidate => candidate.score != null)
             .OrderBy(candidate => candidate.score)
             .ThenBy(candidate => candidate.order)
             .Select(candidate => candidate.command)];
-        selected = 0;
-        scroll = 0;
     }
 
     void Move(int delta, bool wrap = true)

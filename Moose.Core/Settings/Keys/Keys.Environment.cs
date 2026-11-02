@@ -8,5 +8,6 @@ public static partial class Keys
         public const string Home = "Environment:Home";
         public const string Shell = "Environment:Shell";
         public const string HomeConfig = "Environment:HomeConfig";
+        public const string HomeState = "Environment:HomeState";
     }
 }

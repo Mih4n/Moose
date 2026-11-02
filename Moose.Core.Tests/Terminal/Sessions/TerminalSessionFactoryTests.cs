@@ -33,6 +33,23 @@ public class TerminalSessionFactoryTests
     }
 
     [Fact]
+    public void ResolveStartInfo_LetsALayoutTabOverrideTheShell()
+    {
+        var shell = new ShellOptions { Program = "/bin/sh", Args = ["-l"], WorkingDirectory = "/" };
+        var environment = new EnvironmentOptions("/tmp", null, null);
+        var factory = new TerminalSessionFactory(new UnsupportedPseudoTerminalFactory(), shell, new ScrollbackOptions(), environment);
+
+        var program = factory.ResolveStartInfo(new TabLayout(Program: "htop", WorkingDirectory: "/tmp"));
+        var shellArgs = factory.ResolveStartInfo(new TabLayout(WorkingDirectory: "/does/not/exist"));
+
+        Assert.Equal("htop", program.Program);
+        Assert.Empty(program.Arguments);
+        Assert.Equal("/tmp", program.WorkingDirectory);
+        Assert.Equal(["-l"], shellArgs.Arguments);
+        Assert.Equal("/", shellArgs.WorkingDirectory);
+    }
+
+    [Fact]
     public void ResolveStartInfo_WithoutAnyShellUsesBinSh()
     {
         Assert.Equal("/bin/sh", Resolve(new ShellOptions(), new EnvironmentOptions(null, null, null)).Program);

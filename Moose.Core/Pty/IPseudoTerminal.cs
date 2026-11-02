@@ -2,6 +2,8 @@ namespace Moose.Core.Pty;
 
 public interface IPseudoTerminal : IDisposable
 {
+    int ProcessId { get; }
+
     int Read(Span<byte> buffer);
 
     void Write(ReadOnlySpan<byte> data);

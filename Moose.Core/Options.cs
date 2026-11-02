@@ -14,12 +14,16 @@ public static class OptionsExtender
     /// The built-in config.toml shipped as a resource.
     internal static string DefaultToml => defaultToml.Value;
 
-    private static string ResolveConfigurationFile(EnvironmentOptions options)
+    /// $XDG_CONFIG_HOME/moose, or ~/.config/moose.
+    public static string ConfigDirectory(EnvironmentOptions options)
     {
         var home = options.HomeConfig ?? options.Home;
-        var configDir = Path.Combine(home!, options.HomeConfig == null ? ".config" : "", "moose");
+        return Path.Combine(home!, options.HomeConfig == null ? ".config" : "", "moose");
+    }
 
-        var directory = Directory.CreateDirectory(configDir);
+    private static string ResolveConfigurationFile(EnvironmentOptions options)
+    {
+        var directory = Directory.CreateDirectory(ConfigDirectory(options));
         var file = CreateDefaultConfig(directory.FullName);
 
         return file;

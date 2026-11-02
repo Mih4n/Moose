@@ -6,6 +6,7 @@ namespace Moose.UI;
 
 sealed class UiTheme
 {
+    public float BorderWidth { get; } = 2;
     public Color Background { get; } = Configuration.Color(Keys.Ui.Colors.Background);
     public Color Panel { get; } = Configuration.Color(Keys.Ui.Colors.Panel);
     public Color Border { get; } = Configuration.Color(Keys.Ui.Colors.Border);

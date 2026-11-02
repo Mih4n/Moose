@@ -39,6 +39,23 @@ public sealed class TerminalSession : IDisposable
     public bool IsStarted => pty != null;
     public bool IsRunning => pty != null && ExitCode == null;
 
+    /// Where the shell is now: its process's cwd where /proc has it, else the last OSC 7 report, else where it started.
+    public string WorkingDirectory
+    {
+        get
+        {
+            if (IsRunning && pty is { } terminal && OperatingSystem.IsLinux())
+            {
+                try
+                {
+                    if (new DirectoryInfo($"/proc/{terminal.ProcessId}/cwd").LinkTarget is { } target && Directory.Exists(target)) return target;
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+            }
+            lock (SyncRoot) return Screen.WorkingDirectory ?? StartInfo.WorkingDirectory;
+        }
+    }
+
     public void Start(int columns, int rows, int pixelWidth = 0, int pixelHeight = 0)
     {
         if (pty != null) throw new InvalidOperationException("Session already started.");

@@ -9,6 +9,8 @@ using Moose.Graphics.Hosting;
 using Moose.UI.Input;
 using Moose.UI.Palette;
 using Moose.UI.Terminal;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Primitives;
 using Silk.NET.Input;
 using static Moose.Graphics.Elements.Ui;
 using GraphicsModifiers = Moose.Graphics.Input.KeyModifiers;
@@ -23,6 +25,8 @@ namespace Moose.UI;
 sealed class RootView : IView, IInputHandler
 {
     readonly TerminalSessionFactory sessionFactory;
+    readonly SessionStore sessions;
+    readonly ILogger<RootView> logger;
     readonly AppWindow window;
     readonly ConcurrentQueue<Action> mainThread = new();
     readonly List<TerminalTab> tabs = [];
@@ -35,13 +39,18 @@ sealed class RootView : IView, IInputHandler
     (int Column, int Row)? lastReportedCell;
     float wheelRemainder;
 
-    public RootView(TerminalSessionFactory sessionFactory, AppWindow window)
+    public RootView(TerminalSessionFactory sessionFactory, SessionStore sessions, StartupSession startup, AppWindow window, ILogger<RootView> logger)
     {
         this.sessionFactory = sessionFactory;
+        this.sessions = sessions;
+        this.logger = logger;
         this.window = window;
         settings = UiSettings.Load();
         view = new TerminalView(settings, window);
-        OpenTab();
+        // the config file reloads itself when it changes; pick that up on the main thread
+        ChangeToken.OnChange(Configuration.Current.GetReloadToken, () => Post(ApplySettings));
+        if (startup.Layout is { Tabs.Count: > 0 } layout) OpenLayout(layout);
+        else OpenTab();
     }
 
     TerminalTab? ActiveTab => tabs.Count > 0 ? tabs[Math.Clamp(active, 0, tabs.Count - 1)] : null;
@@ -59,9 +68,9 @@ sealed class RootView : IView, IInputHandler
                 Column()
                     .W(220)
                     .Bg(theme.Panel)
-                    .Children([.. tabs.Select((tab, index) => TabFor(tab, index, theme)), NewTabButton(theme, OpenTab)]),
+                    .Children([.. tabs.Select((tab, index) => TabFor(tab, index, theme)), NewTabButton(theme, () => OpenTab())]),
                 Div()
-                    .W(1)
+                    .W(theme.BorderWidth)
                     .Bg(theme.Border),
                 view.Render(activeTab));
         return palette.IsOpen ? Stack().Children(content, palette.Render(theme, settings.Keybindings, action => RunPaletteAction(action, activeTab))) : content;
@@ -91,8 +100,14 @@ sealed class RootView : IView, IInputHandler
             else if (palette.KeyDown(key, modifiers) is { } picked) RunPaletteAction(picked, tab);
             return;
         }
-        // "none" unbinds a default chord so it reaches the shell again
-        if (binding is { Action: not "none" })
+        // "none" unbinds a default chord so it reaches the shell again, and copy_or_interrupt only keeps it while there's a selection
+        if (binding is { Action: "copy_or_interrupt" } && tab.Selection is { IsEmpty: false })
+        {
+            Copy(tab);
+            tab.Selection = null;
+            return;
+        }
+        if (binding is { Action: not ("none" or "copy_or_interrupt") })
         {
             RunAction(binding.Action, tab);
             return;
@@ -222,6 +237,7 @@ sealed class RootView : IView, IInputHandler
 
     void Typed(TerminalTab tab)
     {
+        tab.Selection = null;
         view.RestartBlink();
         tab.ResetScrollFraction();
     }
@@ -255,13 +271,25 @@ sealed class RootView : IView, IInputHandler
             case "scroll_to_bottom": ScrollToBottom(tab); break;
             case "new_tab": OpenTab(); break;
             case "close_tab": CloseTab(tab); break;
+            case "rename_tab": palette.Prompt("Tab name… (empty resets it)", Command.RenameTab); break;
             case "next_tab": SwitchTab(1); break;
             case "previous_tab": SwitchTab(-1); break;
-            case "command_palette": palette.Open(tabs.Select((candidate, index) => Command.SwitchTab(index, candidate.Title(settings.Window.DynamicTitle)))); break;
+            case "command_palette":
+                palette.Open([
+                    .. tabs.Select((candidate, index) => Command.SwitchTab(index, candidate.Title(settings.Window.DynamicTitle))),
+                    .. sessions.Names().Select(Command.OpenSession),
+                ]);
+                break;
             case "new_window": StartNewWindow(); break;
             case "reload_config": ReloadConfiguration(); break;
+            case "save_session": SaveLastSession(); break;
+            case "save_session_as": palette.Prompt("Session name…", Command.SaveSessionAs); break;
+            case "restore_session": OpenSession(sessions.LoadLast, "the previous session"); break;
             default:
                 if (Command.TabIndex(action) is { } index && index < tabs.Count) active = index;
+                else if (Command.TabName(action) is { } name) tab.Name = name.Length > 0 ? name : null;
+                else if (Command.SessionToOpen(action) is { } session) OpenSession(() => sessions.Load(session), $"session '{session}'");
+                else if (Command.SessionToSave(action) is { } saveAs) SaveSession(saveAs);
                 break;
         }
     }
@@ -278,14 +306,58 @@ sealed class RootView : IView, IInputHandler
         window.Invalidate();
     }
 
-    void OpenTab()
+    void OpenTab(TabLayout? layout = null)
     {
-        var tab = new TerminalTab(sessionFactory.Create());
+        var tab = new TerminalTab(sessionFactory.Create(layout), layout);
         tab.Session.Changed += window.Invalidate;
         tab.Session.Exited += _ => Post(() => CloseTab(tab));
         tab.Session.ClipboardSet += text => Post(() => window.Clipboard = text);
         tabs.Add(tab);
         active = tabs.Count - 1;
+    }
+
+    /// Adds the layout's tabs after the open ones and activates the one it marks active.
+    void OpenLayout(SessionLayout layout)
+    {
+        var first = tabs.Count;
+        foreach (var tab in layout.Tabs) OpenTab(tab);
+        active = first + Math.Clamp(layout.Active, 0, Math.Max(0, layout.Tabs.Count - 1));
+    }
+
+    void OpenSession(Func<SessionLayout?> load, string description)
+    {
+        try
+        {
+            if (load() is { Tabs.Count: > 0 } layout) OpenLayout(layout);
+            else logger.LogWarning("There's no {Session} to open.", description);
+        }
+        catch (Exception exception) when (exception is IOException or FormatException or UnauthorizedAccessException)
+        {
+            logger.LogWarning("Couldn't open {Session}: {Message}", description, exception.Message);
+        }
+    }
+
+    /// The open tabs with the directories their shells are in now, or null when there are none.
+    public SessionLayout? Snapshot() => tabs.Count > 0 ? new SessionLayout([.. tabs.Select(tab => tab.Snapshot())], active) : null;
+
+    public void SaveLastSession()
+    {
+        if (Snapshot() is not { } layout) return;
+        try { sessions.SaveLast(layout); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning("Couldn't save the session: {Message}", exception.Message);
+        }
+    }
+
+    void SaveSession(string name)
+    {
+        if (Snapshot() is not { } layout) return;
+        try { logger.LogInformation("Saved the session to {Path}", sessions.Save(name, layout)); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning("Couldn't save session '{Name}': {Message}", name, exception.Message);
+        }
     }
 
     void CloseTab(TerminalTab tab)
@@ -334,13 +406,18 @@ sealed class RootView : IView, IInputHandler
     void ReloadConfiguration()
     {
         Configuration.Reload();
+        ApplySettings();
+    }
+
+    void ApplySettings()
+    {
         settings = UiSettings.Load();
         view.Configure(settings);
     }
 
     static void StartNewWindow()
     {
-        if (Environment.ProcessPath is { } path) Process.Start(new ProcessStartInfo(path) { UseShellExecute = false })?.Dispose();
+        if (Environment.ProcessPath is { } path) Process.Start(new ProcessStartInfo(path) { UseShellExecute = false, ArgumentList = { StartupSession.NoRestore } })?.Dispose();
     }
 
     GridPoint GridPointAt(TerminalTab tab, (int Column, int Row) cell)

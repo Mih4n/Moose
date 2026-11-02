@@ -8,6 +8,8 @@ internal sealed class UnixPseudoTerminal(int master, int processId) : IPseudoTer
     bool disposed;
     bool reaped;
 
+    public int ProcessId => processId;
+
     public int Read(Span<byte> buffer)
     {
         while (true)

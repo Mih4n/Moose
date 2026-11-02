@@ -21,6 +21,7 @@ family = "JetBrainsMonoNL Nerd Font"
 size = 11.0              # points, like kitty/alacritty (1pt = 96/72 logical px)
 line_height = 1.0
 ligatures = true         # shape runs with HarfBuzz so programming ligatures form (needs a font that has them)
+fallback = []            # families tried for characters the font lacks, e.g. ["Noto Sans CJK JP"]; fontconfig picks the rest
 
 [window]
 title = "Moose"
@@ -32,6 +33,11 @@ padding_y = 0
 opacity = 1.0
 decorations = true       # title bar and borders; false hides them
 confirm_close = false
+
+# Layouts are TOML files with tabs to open; see `moose --help`. Named ones live in sessions/ next to this file.
+[session]
+save_on_exit = true      # remember the open tabs and their directories for `moose --restore`
+restore_on_start = false # reopen them on every start (new windows still start fresh)
 
 [cursor]
 style = "beam"           # block | beam | underline
@@ -94,9 +100,11 @@ text_muted     = "#bdae93"
 debug_bounds   = "#ff00ff"   # outline color when [debug] bounds = true
 
 # Built-in bindings always apply; add your own to override them, or use action = "none" to pass a chord to the shell.
-# Actions: command_palette, copy, paste, new_tab, close_tab, next_tab, previous_tab, new_window,
+# Actions: command_palette, copy, paste, new_tab, close_tab, rename_tab, next_tab, previous_tab, new_window,
 # scroll_line_up, scroll_line_down, scroll_page_up, scroll_page_down, scroll_to_top, scroll_to_bottom,
-# font_size_increase, font_size_decrease, font_size_reset, reload_config, none
+# font_size_increase, font_size_decrease, font_size_reset, reload_config,
+# save_session, save_session_as, restore_session,
+# copy_or_interrupt (copies when text is selected, otherwise the chord goes to the shell), none
 
 [[keybindings]]
 keys = "ctrl+shift+p"
@@ -105,6 +113,10 @@ action = "command_palette"
 [[keybindings]]
 keys = "ctrl+shift+c"
 action = "copy"
+
+# [[keybindings]]
+# keys = "ctrl+c"
+# action = "copy_or_interrupt"
 
 [[keybindings]]
 keys = "ctrl+shift+v"
