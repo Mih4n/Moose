@@ -488,3 +488,7 @@ devenv.local.yaml
 
 # direnv
 .direnv
+
+# Nix
+result
+result-*

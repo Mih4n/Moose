@@ -1,0 +1,39 @@
+id: io.github.mih4n.Moose
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: moose
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --talk-name=org.freedesktop.Flatpak
+  - --filesystem=xdg-config/moose:create
+  - --env=TERM=xterm-256color
+modules:
+  - name: moose
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/moose
+      - cp -r publish/. /app/lib/moose/
+      - chmod +x /app/lib/moose/Moose.UI
+      - install -Dm755 moose.sh /app/bin/moose
+      - install -Dm755 moose-host-shell.sh /app/bin/moose-host-shell
+      - install -Dm644 io.github.mih4n.Moose.desktop /app/share/applications/io.github.mih4n.Moose.desktop
+      - install -Dm644 io.github.mih4n.Moose.svg /app/share/icons/hicolor/scalable/apps/io.github.mih4n.Moose.svg
+      - install -Dm644 io.github.mih4n.Moose.metainfo.xml /app/share/metainfo/io.github.mih4n.Moose.metainfo.xml
+    sources:
+      - type: dir
+        path: ../../publish
+        dest: publish
+      - type: file
+        path: moose.sh
+      - type: file
+        path: moose-host-shell.sh
+      - type: file
+        path: ../io.github.mih4n.Moose.desktop
+      - type: file
+        path: ../io.github.mih4n.Moose.svg
+      - type: file
+        path: ../io.github.mih4n.Moose.metainfo.xml

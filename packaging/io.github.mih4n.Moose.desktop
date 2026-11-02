@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Moose
+GenericName=Terminal
+Comment=GPU accelerated terminal emulator
+Exec=moose
+Icon=io.github.mih4n.Moose
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=shell;prompt;command;commandline;cmd;
+StartupWMClass=Moose

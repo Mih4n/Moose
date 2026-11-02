@@ -1,0 +1,116 @@
+name: Package
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install shader compiler
+        run: sudo apt-get update && sudo apt-get install -y glslc
+
+      - name: Test
+        run: dotnet test --configuration Release
+
+      - name: Publish
+        run: dotnet publish Moose.UI --configuration Release --runtime linux-x64 --self-contained --output publish -p:DebugType=none
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: publish
+          path: publish
+          if-no-files-found: error
+
+  appimage:
+    needs: publish
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: publish
+          path: publish
+
+      - name: Assemble AppDir
+        run: |
+          mkdir -p AppDir/usr/lib/moose AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/scalable/apps AppDir/usr/share/metainfo
+          cp -r publish/. AppDir/usr/lib/moose/
+          chmod +x AppDir/usr/lib/moose/Moose.UI
+          install -Dm755 packaging/appimage/AppRun AppDir/AppRun
+          cp packaging/io.github.mih4n.Moose.desktop AppDir/
+          cp packaging/io.github.mih4n.Moose.svg AppDir/
+          cp packaging/io.github.mih4n.Moose.desktop AppDir/usr/share/applications/
+          cp packaging/io.github.mih4n.Moose.svg AppDir/usr/share/icons/hicolor/scalable/apps/
+          cp packaging/io.github.mih4n.Moose.metainfo.xml AppDir/usr/share/metainfo/io.github.mih4n.Moose.appdata.xml
+
+      - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          ARCH: x86_64
+        run: |
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          ./appimagetool-x86_64.AppImage AppDir Moose-x86_64.AppImage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: Moose-x86_64.AppImage
+          if-no-files-found: error
+
+  flatpak:
+    needs: publish
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: publish
+          path: publish
+
+      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
+        with:
+          bundle: Moose.flatpak
+          manifest-path: packaging/flatpak/io.github.mih4n.Moose.yml
+          cache-key: flatpak-builder-${{ github.sha }}
+          upload-artifact: false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak
+          path: Moose.flatpak
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [appimage, flatpak]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/appimage/Moose-x86_64.AppImage
+            artifacts/flatpak/Moose.flatpak
