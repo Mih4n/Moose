@@ -58,17 +58,17 @@ audible = false
 visual = false
 
 # Colors anywhere accept "#rgb", "#rrggbb", "#rrggbbaa", "rgb(r, g, b)", "rgba(r, g, b, a)" or [r, g, b(, a)].
-# Gruvbox VSCode Dark Medium (Zed theme terminal colors)
+# Gruvbox dark, as in kitty
 [colors]
 foreground = "#ebdbb2"
 background = "#282828"
-cursor = "#ebdbb2"
+cursor = "#928374"
 cursor_text = "#282828"
-selection_foreground = "#ebdbb2"
-selection_background = "#504945"
+selection_foreground = "#fbf1c7"
+selection_background = "#458588"
 
 [colors.normal]
-black   = "#3c3836"
+black   = "#282828"
 red     = "#cc241d"
 green   = "#98971a"
 yellow  = "#d79921"
