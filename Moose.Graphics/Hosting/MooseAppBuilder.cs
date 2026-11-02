@@ -12,7 +12,7 @@ namespace Moose.Graphics.Hosting;
 
 public sealed class MooseAppBuilder(string[] args) : IHostApplicationBuilder
 {
-    readonly HostApplicationBuilder host = Host.CreateApplicationBuilder(args);
+    readonly HostApplicationBuilder host = CreateHost(args);
     readonly WindowBuilder window = new();
 
     public IServiceCollection Services => host.Services;
@@ -24,6 +24,14 @@ public sealed class MooseAppBuilder(string[] args) : IHostApplicationBuilder
 
     public void ConfigureContainer<TContainerBuilder>(IServiceProviderFactory<TContainerBuilder> factory, Action<TContainerBuilder>? configure = null)
         where TContainerBuilder : notnull => host.ConfigureContainer(factory, configure);
+
+    // the defaults watch the working directory recursively for appsettings.json; started from $HOME that alone takes seconds
+    static HostApplicationBuilder CreateHost(string[] args)
+    {
+        var host = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { Args = args, DisableDefaults = true });
+        host.Logging.AddConsole();
+        return host;
+    }
 
     public MooseAppBuilder Window(Action<WindowBuilder> configure) { configure(window); return this; }
 
