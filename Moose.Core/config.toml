@@ -64,8 +64,8 @@ foreground = "#ebdbb2"
 background = "#282828"
 cursor = "#928374"
 cursor_text = "#282828"
-selection_foreground = "#fbf1c7"
-selection_background = "#458588"
+selection_foreground = "#ebdbb2"
+selection_background = "#504945"
 
 [colors.normal]
 black   = "#282828"
