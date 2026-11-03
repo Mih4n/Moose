@@ -162,7 +162,12 @@ public sealed class TextSystemTests : IDisposable
         const int Han = 0x4E2D;
         using var primary = new TextShaper(locator.Find("monospace")!);
         Assert.SkipWhen(primary.Covers(Han), "the monospace font already has the character");
-        Assert.SkipWhen(!locator.FindFallbacks("monospace", new Rune(Han)).Any(), "no installed font has the character");
+        // fc-match -s lists every font, charset only sorts them, so check the candidates actually have it
+        Assert.SkipWhen(!locator.FindFallbacks("monospace", new Rune(Han)).Any(path =>
+        {
+            using var candidate = new TextShaper(path);
+            return candidate.Covers(Han);
+        }), "no installed font has the character");
         var fallback = new List<Quad>();
         var missing = new List<Quad>();
 
