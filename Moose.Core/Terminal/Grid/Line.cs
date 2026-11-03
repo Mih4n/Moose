@@ -1,4 +1,5 @@
 using System.Text;
+using Moose.Core.Terminal.Images;
 
 namespace Moose.Core.Terminal.Grid;
 
@@ -12,6 +13,8 @@ public sealed class Line
 
     public Cell[] Cells { get; private set; }
     public bool Wrapped { get; set; }
+    /// Images whose top-left cell is on this line; null for the vast majority of lines.
+    public List<ImagePlacement>? Placements { get; set; }
     public int Length => Cells.Length;
 
     public void Fill(int start, int end, Cell blank)

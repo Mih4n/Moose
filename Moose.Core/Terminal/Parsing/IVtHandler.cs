@@ -13,4 +13,6 @@ public interface IVtHandler
     void CsiDispatch(CsiParameters parameters, byte privateMarker, ReadOnlySpan<byte> intermediates, byte final);
 
     void OscDispatch(ReadOnlySpan<byte> payload);
+
+    void ApcDispatch(ReadOnlySpan<byte> payload);
 }

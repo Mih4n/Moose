@@ -5,6 +5,7 @@ layout(location = 1) in vec4 inColor;
 layout(location = 2) in vec4 inBorderColor;
 layout(location = 3) in vec2 inParams;
 layout(location = 4) in vec4 inUv;
+layout(location = 5) in int inTexture;
 
 layout(push_constant) uniform Push { vec2 viewport; } push;
 
@@ -15,6 +16,7 @@ layout(location = 3) flat out vec4 outBorderColor;
 layout(location = 4) flat out vec2 outParams;
 layout(location = 5) out vec2 outUv;
 layout(location = 6) flat out float outGlyph;
+layout(location = 7) flat out int outTexture;
 
 void main() {
     vec2 corner = vec2(gl_VertexIndex & 1, gl_VertexIndex >> 1);
@@ -27,4 +29,5 @@ void main() {
     outParams = inParams;
     outUv = inUv.xy + corner * inUv.zw;
     outGlyph = inUv.z > 0.0 ? 1.0 : 0.0;
+    outTexture = inTexture;
 }

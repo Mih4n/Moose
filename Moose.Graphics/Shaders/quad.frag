@@ -7,7 +7,9 @@ layout(location = 3) flat in vec4 borderColor;
 layout(location = 4) flat in vec2 params;
 layout(location = 5) in vec2 uv;
 layout(location = 6) flat in float glyph;
+layout(location = 7) flat in int imageSlot;
 
+// the glyph atlas, or the image of the batch when imageSlot is set
 layout(set = 0, binding = 0) uniform sampler2D atlas;
 
 layout(location = 0) out vec4 outColor;
@@ -18,6 +20,11 @@ float roundedBox(vec2 p, vec2 b, float r) {
 }
 
 void main() {
+    if (imageSlot != 0) {
+        vec4 texel = textureLod(atlas, uv, 0.0);
+        outColor = vec4(texel.rgb * texel.a, texel.a) * color.a;
+        return;
+    }
     if (glyph > 0.5) {
         outColor = vec4(color.rgb * color.a, color.a) * textureLod(atlas, uv, 0.0).r;
         return;

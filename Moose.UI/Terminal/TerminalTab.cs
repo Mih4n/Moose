@@ -28,12 +28,12 @@ sealed class TerminalTab(TerminalSession session, TabLayout? layout = null) : ID
         return dynamic && !string.IsNullOrWhiteSpace(title) ? title : Path.GetFileName(session.StartInfo.Program);
     }
 
-    public void EnsureStarted(int columns, int rows)
+    public void EnsureStarted(int columns, int rows, int pixelWidth = 0, int pixelHeight = 0)
     {
         if (session.IsStarted || startFailed) return;
         try
         {
-            session.Start(columns, rows);
+            session.Start(columns, rows, pixelWidth, pixelHeight);
         }
         catch (Exception exception) when (exception is Win32Exception or PlatformNotSupportedException)
         {

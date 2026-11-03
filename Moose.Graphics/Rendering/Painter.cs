@@ -20,11 +20,18 @@ public sealed class Painter
     public Rect Bounds { get; }
     public float DefaultFontSize => textSystem.DefaultSize;
 
+    /// Framebuffer px per logical px.
+    public Vector2 Scale => textSystem.Scale;
+
     public Vector2 CellSize(float fontSize) => textSystem.CellSize(fontSize);
 
     public Vector2 Snap(Vector2 point) => new(MathF.Round(point.X * textSystem.Scale.X) / textSystem.Scale.X, MathF.Round(point.Y * textSystem.Scale.Y) / textSystem.Scale.Y);
 
     public void Fill(Rect rect, Color color, float radius = 0) => scene.Add(new Quad(rect, color, Color.Transparent, radius, 0));
+
+    /// Stretches the uv part (0..1) of a straight-alpha RGBA image over rect; rgba must stay unchanged once painted.
+    public void Image(byte[] rgba, int width, int height, Rect rect, Rect uv, float opacity = 1) =>
+        scene.Add(new Quad(rect, new Color(1, 1, 1, opacity), Color.Transparent, 0, 0, uv, textSystem.Images.Slot(rgba, width, height)));
 
     public void Glyph(Rune rune, Vector2 origin, float fontSize, Color color) => textSystem.PaintRune(scene, rune, fontSize, origin, color);
 

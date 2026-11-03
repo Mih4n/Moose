@@ -37,7 +37,7 @@ public sealed class MooseApp(IHost host, WindowBuilder window)
         var textSystem = Services.GetRequiredService<TextSystem>();
         var appWindow = Services.GetRequiredService<AppWindow>();
         host.Start();
-        using var renderer = new VulkanRenderer(window.options, window.libdecor, textSystem.Atlas, Services.GetRequiredService<ILogger<VulkanRenderer>>());
+        using var renderer = new VulkanRenderer(window.options, window.libdecor, textSystem.Atlas, textSystem.Images, Services.GetRequiredService<ILogger<VulkanRenderer>>());
         using var stopping = Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.Register(renderer.Close);
         appWindow.Renderer = renderer;
 

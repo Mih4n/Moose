@@ -16,10 +16,13 @@ using Moose.Graphics.Primitives;
 
 namespace Moose.Graphics.Rendering;
 
-/// Vulkan 1.3 renderer: one pipeline drawing instanced SDF rounded rects and atlas glyphs with dynamic rendering.
+/// Vulkan 1.3 renderer: one pipeline drawing instanced SDF rounded rects, atlas glyphs and images with dynamic rendering.
 internal sealed unsafe class VulkanRenderer : IDisposable
 {
     const int FramesInFlight = 2;
+    const int MaxTextures = 512;
+    const long TextureBudget = 512L << 20;
+    const int TextureGraceFrames = 600; // drawn frames an unused image stays on the GPU, so flipping tabs doesn't re-upload
     const int MaxQuads = 131072; // shortcut: fixed per-frame instance buffer (~9 MB per frame in flight) sized for a full-screen terminal grid on a 4K display; extra quads are dropped
 
     readonly IWindow window;
@@ -27,6 +30,7 @@ internal sealed unsafe class VulkanRenderer : IDisposable
     readonly IInputContext input;
     readonly ILogger logger;
     readonly GlyphAtlas atlas;
+    readonly ImageRegistry imageRegistry;
     readonly Vk vk = Vk.GetApi();
 
     Instance instance;
@@ -55,6 +59,25 @@ internal sealed unsafe class VulkanRenderer : IDisposable
     DescriptorSetLayout descriptorLayout;
     DescriptorPool descriptorPool;
     DescriptorSet descriptorSet;
+
+    // images: one texture and descriptor set each, keyed by the pixel array that was painted
+    sealed class Texture
+    {
+        public Image Image;
+        public DeviceMemory Memory;
+        public ImageView View;
+        public DescriptorSet Set;
+        public long Bytes;
+        public long LastUsed;
+    }
+
+    readonly Dictionary<byte[], Texture> textures = new(ReferenceEqualityComparer.Instance);
+    // per frame slot: freed once that slot's fence has signalled again, when the GPU is done with them
+    readonly List<Action>[] garbage = [[], []];
+    DescriptorPool texturePool;
+    uint maxImageDimension;
+    long textureBytes;
+    long frameNumber;
 
     PipelineLayout layout;
     Pipeline pipeline;
@@ -94,10 +117,11 @@ internal sealed unsafe class VulkanRenderer : IDisposable
         }
     }
 
-    public VulkanRenderer(WindowOptions options, bool libdecor, GlyphAtlas atlas, ILogger logger)
+    public VulkanRenderer(WindowOptions options, bool libdecor, GlyphAtlas atlas, ImageRegistry imageRegistry, ILogger logger)
     {
         this.logger = logger;
         this.atlas = atlas;
+        this.imageRegistry = imageRegistry;
         sdl = Silk.NET.SDL.Sdl.GetApi();
         sdl.SetHint("SDL_VIDEODRIVER", "wayland,x11");
         // sdl2-compat turns on scale-to-display for SDL2 clients, which reports pixels as window coordinates
@@ -177,6 +201,7 @@ internal sealed unsafe class VulkanRenderer : IDisposable
             var framebuffer = FramebufferSize;
             if (framebuffer.X == 0 || framebuffer.Y == 0) continue; // minimized
             if (resized) RecreateSwapchain();
+            imageRegistry.Clear();
             var frame = buildFrame(new Vector2(window.Size.X, window.Size.Y));
             Draw(frame.Scene, frame.ClearColor);
         }
@@ -240,6 +265,7 @@ internal sealed unsafe class VulkanRenderer : IDisposable
         }
         if (gpu.Handle == 0) throw new NotSupportedException("No Vulkan 1.3 GPU with a graphics+present queue.");
         var gpuProps = Properties(gpu);
+        maxImageDimension = gpuProps.Limits.MaxImageDimension2D;
         logger.LogInformation("GPU: {Name}", SilkMarshal.PtrToString((nint)gpuProps.DeviceName));
 
         var priority = 1f;
@@ -364,19 +390,20 @@ internal sealed unsafe class VulkanRenderer : IDisposable
         stages[1] = new() { SType = StructureType.PipelineShaderStageCreateInfo, Stage = ShaderStageFlags.FragmentBit, Module = frag, PName = entry };
 
         var binding = new VertexInputBindingDescription { Binding = 0, Stride = (uint)sizeof(Quad), InputRate = VertexInputRate.Instance };
-        var attributes = stackalloc VertexInputAttributeDescription[5];
+        var attributes = stackalloc VertexInputAttributeDescription[6];
         attributes[0] = new() { Location = 0, Format = Format.R32G32B32A32Sfloat, Offset = 0 };  // rect
         attributes[1] = new() { Location = 1, Format = Format.R32G32B32A32Sfloat, Offset = 16 }; // color
         attributes[2] = new() { Location = 2, Format = Format.R32G32B32A32Sfloat, Offset = 32 }; // border color
         attributes[3] = new() { Location = 3, Format = Format.R32G32Sfloat, Offset = 48 };       // radius, border width
         attributes[4] = new() { Location = 4, Format = Format.R32G32B32A32Sfloat, Offset = 56 }; // glyph uv
+        attributes[5] = new() { Location = 5, Format = Format.R32Sint, Offset = 72 };            // image slot
 
         var vertexInput = new PipelineVertexInputStateCreateInfo
         {
             SType = StructureType.PipelineVertexInputStateCreateInfo,
             VertexBindingDescriptionCount = 1,
             PVertexBindingDescriptions = &binding,
-            VertexAttributeDescriptionCount = 5,
+            VertexAttributeDescriptionCount = 6,
             PVertexAttributeDescriptions = attributes,
         };
         var assembly = new PipelineInputAssemblyStateCreateInfo { SType = StructureType.PipelineInputAssemblyStateCreateInfo, Topology = PrimitiveTopology.TriangleStrip };
@@ -496,6 +523,17 @@ internal sealed unsafe class VulkanRenderer : IDisposable
             PImageInfo = &imageDescriptor,
         };
         vk.UpdateDescriptorSets(device, 1, in write, 0, null);
+
+        var texturePoolSize = new DescriptorPoolSize { Type = DescriptorType.CombinedImageSampler, DescriptorCount = MaxTextures };
+        var texturePoolInfo = new DescriptorPoolCreateInfo
+        {
+            SType = StructureType.DescriptorPoolCreateInfo,
+            Flags = DescriptorPoolCreateFlags.FreeDescriptorSetBit,
+            MaxSets = MaxTextures,
+            PoolSizeCount = 1,
+            PPoolSizes = &texturePoolSize,
+        };
+        Check(vk.CreateDescriptorPool(device, in texturePoolInfo, null, out texturePool), "vkCreateDescriptorPool");
     }
 
     // shortcut: re-uploads the whole atlas and idles the GPU when any glyph was added; fine while new glyphs are rare, upload dirty rects into a per-frame staging slot if typing causes hitches
@@ -505,7 +543,7 @@ internal sealed unsafe class VulkanRenderer : IDisposable
         atlas.Pixels.CopyTo(new Span<byte>((void*)atlasStagingMapped, atlas.Pixels.Length));
         atlas.Dirty = false;
 
-        AtlasBarrier(cmd, ImageLayout.Undefined, ImageLayout.TransferDstOptimal, 0, AccessFlags.TransferWriteBit, PipelineStageFlags.TopOfPipeBit, PipelineStageFlags.TransferBit);
+        UploadBarrier(cmd, atlasImage, ImageLayout.Undefined, ImageLayout.TransferDstOptimal, 0, AccessFlags.TransferWriteBit, PipelineStageFlags.TopOfPipeBit, PipelineStageFlags.TransferBit);
         var size = (uint)atlas.Size;
         var region = new BufferImageCopy
         {
@@ -513,10 +551,10 @@ internal sealed unsafe class VulkanRenderer : IDisposable
             ImageExtent = new Extent3D(size, size, 1),
         };
         vk.CmdCopyBufferToImage(cmd, atlasStaging, atlasImage, ImageLayout.TransferDstOptimal, 1, in region);
-        AtlasBarrier(cmd, ImageLayout.TransferDstOptimal, ImageLayout.ShaderReadOnlyOptimal, AccessFlags.TransferWriteBit, AccessFlags.ShaderReadBit, PipelineStageFlags.TransferBit, PipelineStageFlags.FragmentShaderBit);
+        UploadBarrier(cmd, atlasImage, ImageLayout.TransferDstOptimal, ImageLayout.ShaderReadOnlyOptimal, AccessFlags.TransferWriteBit, AccessFlags.ShaderReadBit, PipelineStageFlags.TransferBit, PipelineStageFlags.FragmentShaderBit);
     }
 
-    void AtlasBarrier(CommandBuffer cmd, ImageLayout from, ImageLayout to, AccessFlags srcAccess, AccessFlags dstAccess, PipelineStageFlags srcStage, PipelineStageFlags dstStage)
+    void UploadBarrier(CommandBuffer cmd, Image image, ImageLayout from, ImageLayout to, AccessFlags srcAccess, AccessFlags dstAccess, PipelineStageFlags srcStage, PipelineStageFlags dstStage)
     {
         var barrier = new ImageMemoryBarrier
         {
@@ -527,10 +565,134 @@ internal sealed unsafe class VulkanRenderer : IDisposable
             DstAccessMask = dstAccess,
             SrcQueueFamilyIndex = Vk.QueueFamilyIgnored,
             DstQueueFamilyIndex = Vk.QueueFamilyIgnored,
-            Image = atlasImage,
+            Image = image,
             SubresourceRange = ColorRange,
         };
         vk.CmdPipelineBarrier(cmd, srcStage, dstStage, 0, 0, null, 0, null, 1, &barrier);
+    }
+
+    /// Textures for this frame's image slots (index = slot - 1), uploading new ones; a default handle means it couldn't be made.
+    DescriptorSet[] PrepareTextures(CommandBuffer cmd)
+    {
+        var sources = imageRegistry.Sources;
+        var sets = new DescriptorSet[sources.Count];
+        for (var index = 0; index < sources.Count; index++)
+        {
+            var source = sources[index];
+            if (!textures.TryGetValue(source.Pixels, out var texture))
+            {
+                if (UploadTexture(cmd, source) is not { } uploaded) continue;
+                textures[source.Pixels] = texture = uploaded;
+            }
+            texture.LastUsed = frameNumber;
+            sets[index] = texture.Set;
+        }
+        return sets;
+    }
+
+    Texture? UploadTexture(CommandBuffer cmd, ImageSource source)
+    {
+        var (width, height) = ((uint)source.Width, (uint)source.Height);
+        var size = (ulong)source.Width * (ulong)source.Height * 4;
+        if (width == 0 || height == 0 || width > maxImageDimension || height > maxImageDimension || (ulong)source.Pixels.Length < size || textures.Count >= MaxTextures) return null;
+
+        var texture = new Texture { Bytes = (long)size };
+        var imageInfo = new ImageCreateInfo
+        {
+            SType = StructureType.ImageCreateInfo,
+            ImageType = ImageType.Type2D,
+            Format = Format.R8G8B8A8Unorm,
+            Extent = new Extent3D(width, height, 1),
+            MipLevels = 1,
+            ArrayLayers = 1,
+            Samples = SampleCountFlags.Count1Bit,
+            Tiling = ImageTiling.Optimal,
+            Usage = ImageUsageFlags.TransferDstBit | ImageUsageFlags.SampledBit,
+            SharingMode = SharingMode.Exclusive,
+            InitialLayout = ImageLayout.Undefined,
+        };
+        Check(vk.CreateImage(device, in imageInfo, null, out texture.Image), "vkCreateImage");
+        vk.GetImageMemoryRequirements(device, texture.Image, out var imageReq);
+        texture.Memory = Allocate(imageReq, MemoryPropertyFlags.DeviceLocalBit);
+        Check(vk.BindImageMemory(device, texture.Image, texture.Memory, 0), "vkBindImageMemory");
+        var viewInfo = new ImageViewCreateInfo { SType = StructureType.ImageViewCreateInfo, Image = texture.Image, ViewType = ImageViewType.Type2D, Format = Format.R8G8B8A8Unorm, SubresourceRange = ColorRange };
+        Check(vk.CreateImageView(device, in viewInfo, null, out texture.View), "vkCreateImageView");
+
+        var setLayout = descriptorLayout;
+        var allocInfo = new DescriptorSetAllocateInfo { SType = StructureType.DescriptorSetAllocateInfo, DescriptorPool = texturePool, DescriptorSetCount = 1, PSetLayouts = &setLayout };
+        if (vk.AllocateDescriptorSets(device, in allocInfo, out texture.Set) != Result.Success)
+        {
+            DestroyTexture(texture);
+            return null;
+        }
+        var imageDescriptor = new DescriptorImageInfo { Sampler = atlasSampler, ImageView = texture.View, ImageLayout = ImageLayout.ShaderReadOnlyOptimal };
+        var write = new WriteDescriptorSet
+        {
+            SType = StructureType.WriteDescriptorSet,
+            DstSet = texture.Set,
+            DstBinding = 0,
+            DescriptorCount = 1,
+            DescriptorType = DescriptorType.CombinedImageSampler,
+            PImageInfo = &imageDescriptor,
+        };
+        vk.UpdateDescriptorSets(device, 1, in write, 0, null);
+
+        var stagingInfo = new BufferCreateInfo { SType = StructureType.BufferCreateInfo, Size = size, Usage = BufferUsageFlags.TransferSrcBit, SharingMode = SharingMode.Exclusive };
+        Check(vk.CreateBuffer(device, in stagingInfo, null, out var staging), "vkCreateBuffer");
+        vk.GetBufferMemoryRequirements(device, staging, out var stagingReq);
+        var stagingMemory = Allocate(stagingReq, MemoryPropertyFlags.HostVisibleBit | MemoryPropertyFlags.HostCoherentBit);
+        Check(vk.BindBufferMemory(device, staging, stagingMemory, 0), "vkBindBufferMemory");
+        void* mapped;
+        Check(vk.MapMemory(device, stagingMemory, 0, size, 0, &mapped), "vkMapMemory");
+        source.Pixels.AsSpan(0, (int)size).CopyTo(new Span<byte>(mapped, (int)size));
+        vk.UnmapMemory(device, stagingMemory);
+        garbage[frameIndex].Add(() =>
+        {
+            vk.DestroyBuffer(device, staging, null);
+            vk.FreeMemory(device, stagingMemory, null);
+        });
+
+        UploadBarrier(cmd, texture.Image, ImageLayout.Undefined, ImageLayout.TransferDstOptimal, 0, AccessFlags.TransferWriteBit, PipelineStageFlags.TopOfPipeBit, PipelineStageFlags.TransferBit);
+        var region = new BufferImageCopy
+        {
+            ImageSubresource = new ImageSubresourceLayers { AspectMask = ImageAspectFlags.ColorBit, LayerCount = 1 },
+            ImageExtent = new Extent3D(width, height, 1),
+        };
+        vk.CmdCopyBufferToImage(cmd, staging, texture.Image, ImageLayout.TransferDstOptimal, 1, in region);
+        UploadBarrier(cmd, texture.Image, ImageLayout.TransferDstOptimal, ImageLayout.ShaderReadOnlyOptimal, AccessFlags.TransferWriteBit, AccessFlags.ShaderReadBit, PipelineStageFlags.TransferBit, PipelineStageFlags.FragmentShaderBit);
+        textureBytes += texture.Bytes;
+        return texture;
+    }
+
+    /// Drops textures no frame drew for a while, then the least recently drawn ones while over budget; never one this frame uses.
+    void EvictTextures()
+    {
+        if (textures.Count == 0) return;
+        foreach (var (pixels, texture) in textures.Where(pair => pair.Value.LastUsed < frameNumber).OrderBy(pair => pair.Value.LastUsed).ToList())
+        {
+            if (texture.LastUsed >= frameNumber - TextureGraceFrames && textureBytes <= TextureBudget) break;
+            textures.Remove(pixels);
+            textureBytes -= texture.Bytes;
+            garbage[frameIndex].Add(() => DestroyTexture(texture));
+        }
+    }
+
+    void DestroyTexture(Texture texture)
+    {
+        if (texture.Set.Handle != 0)
+        {
+            var set = texture.Set;
+            vk.FreeDescriptorSets(device, texturePool, 1, in set);
+        }
+        vk.DestroyImageView(device, texture.View, null);
+        vk.DestroyImage(device, texture.Image, null);
+        vk.FreeMemory(device, texture.Memory, null);
+    }
+
+    void CollectGarbage(int slot)
+    {
+        foreach (var free in garbage[slot]) free();
+        garbage[slot].Clear();
     }
 
     DeviceMemory Allocate(MemoryRequirements requirements, MemoryPropertyFlags flags)
@@ -603,6 +765,8 @@ internal sealed unsafe class VulkanRenderer : IDisposable
     {
         var fence = inFlight[frameIndex];
         vk.WaitForFences(device, 1, in fence, true, ulong.MaxValue);
+        CollectGarbage(frameIndex);
+        frameNumber++;
 
         uint imageIndex = 0;
         var result = khrSwapchain.AcquireNextImage(device, swapchain, ulong.MaxValue, imageReady[frameIndex], default, ref imageIndex);
@@ -622,6 +786,7 @@ internal sealed unsafe class VulkanRenderer : IDisposable
         var begin = new CommandBufferBeginInfo { SType = StructureType.CommandBufferBeginInfo, Flags = CommandBufferUsageFlags.OneTimeSubmitBit };
         Check(vk.BeginCommandBuffer(cmd, in begin), "vkBeginCommandBuffer");
         if (atlas.Dirty) UploadAtlas(cmd);
+        var textureSets = PrepareTextures(cmd);
 
         Barrier(cmd, image, ImageLayout.Undefined, ImageLayout.ColorAttachmentOptimal, 0, AccessFlags.ColorAttachmentWriteBit, PipelineStageFlags.ColorAttachmentOutputBit);
         var attachment = new RenderingAttachmentInfo
@@ -638,8 +803,6 @@ internal sealed unsafe class VulkanRenderer : IDisposable
         vk.CmdBeginRendering(cmd, in rendering);
 
         vk.CmdBindPipeline(cmd, PipelineBindPoint.Graphics, pipeline);
-        var set = descriptorSet;
-        vk.CmdBindDescriptorSets(cmd, PipelineBindPoint.Graphics, layout, 0, 1, in set, 0, null);
         var viewport = new Viewport { Width = extent.Width, Height = extent.Height, MaxDepth = 1 };
         vk.CmdSetViewport(cmd, 0, 1, in viewport);
         vk.CmdSetScissor(cmd, 0, 1, in area);
@@ -649,7 +812,22 @@ internal sealed unsafe class VulkanRenderer : IDisposable
         var buffer = quadBuffers[frameIndex];
         ulong offset = 0;
         vk.CmdBindVertexBuffers(cmd, 0, 1, in buffer, in offset);
-        vk.CmdDraw(cmd, 4, (uint)count, 0, 0);
+        // one draw per run of quads sharing a texture, so the painting order stays the drawing order
+        var bound = -1;
+        for (var start = 0; start < count;)
+        {
+            var slot = quads[start].Texture;
+            var end = start + 1;
+            while (end < count && quads[end].Texture == slot) end++;
+            var set = slot == 0 ? descriptorSet : slot <= textureSets.Length ? textureSets[slot - 1] : default;
+            if (set.Handle != 0)
+            {
+                if (slot != bound) vk.CmdBindDescriptorSets(cmd, PipelineBindPoint.Graphics, layout, 0, 1, in set, 0, null);
+                bound = slot;
+                vk.CmdDraw(cmd, 4, (uint)(end - start), 0, (uint)start);
+            }
+            start = end;
+        }
 
         vk.CmdEndRendering(cmd);
         Barrier(cmd, image, ImageLayout.ColorAttachmentOptimal, ImageLayout.PresentSrcKhr, AccessFlags.ColorAttachmentWriteBit, 0, PipelineStageFlags.BottomOfPipeBit);
@@ -691,6 +869,7 @@ internal sealed unsafe class VulkanRenderer : IDisposable
         if (result is Result.ErrorOutOfDateKhr or Result.SuboptimalKhr || resized) RecreateSwapchain();
         else Check(result, "vkQueuePresentKHR");
 
+        EvictTextures();
         frameIndex = (frameIndex + 1) % FramesInFlight;
     }
 
@@ -730,6 +909,10 @@ internal sealed unsafe class VulkanRenderer : IDisposable
         closed = true;
         wakeTimer.Dispose();
         vk.DeviceWaitIdle(device);
+        for (var i = 0; i < FramesInFlight; i++) CollectGarbage(i);
+        foreach (var texture in textures.Values) DestroyTexture(texture);
+        textures.Clear();
+        vk.DestroyDescriptorPool(device, texturePool, null);
         for (var i = 0; i < FramesInFlight; i++)
         {
             vk.DestroyBuffer(device, quadBuffers[i], null);

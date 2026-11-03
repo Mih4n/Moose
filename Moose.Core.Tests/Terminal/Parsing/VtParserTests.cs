@@ -90,6 +90,14 @@ public class VtParserTests
     }
 
     [Fact]
+    public void Apc_IsDispatchedOnStringTerminator()
+    {
+        Feed("\e_Ga=T,f=100;QUJD\e\\x\e^privacy\e\\");
+
+        Assert.Equal(["apc Ga=T,f=100;QUJD", "esc \\", "print x", "esc \\"], handler.Events);
+    }
+
+    [Fact]
     public void Dcs_IsSwallowedUntilStringTerminator()
     {
         Feed("\eP1$qm\e\\a");

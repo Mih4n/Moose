@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Moose.Core.Settings;
 using Moose.Core.Terminal.Grid;
+using Moose.Core.Terminal.Images;
 using Moose.Graphics.Elements;
 using Moose.Graphics.Hosting;
 using Moose.Graphics.Primitives;
@@ -19,9 +20,14 @@ sealed class TerminalView
     const float ScrollbarWidth = 6;
     const float ScrollbarMargin = 3;
     const float MinimumThumb = 24;
+    // kitty: images below this z go under cell backgrounds too, other negative ones only under the text
+    const int BelowBackgrounds = -1_073_741_824;
 
     readonly Stopwatch blinkClock = Stopwatch.StartNew();
     readonly AppWindow window;
+    readonly List<(ImagePlacement Placement, int Row, int Column)> placements = [];
+    readonly List<PlaceholderCell> placeholders = [];
+    long now;
     float shift;
     Rect scrollbarTrack;
     Rect scrollbarThumb;
@@ -111,28 +117,117 @@ sealed class TerminalView
         Rows = Math.Max(1, (int)((bounds.H - 2 * settings.Window.PaddingY) / cellSize.Y));
 
         var session = tab.Session;
-        tab.EnsureStarted(Columns, Rows);
-        session.Resize(Columns, Rows, (int)(Columns * cellSize.X), (int)(Rows * cellSize.Y));
+        // the pty gets physical px, like kitty reports them, so images map 1:1 onto the framebuffer
+        var pixelWidth = (int)MathF.Round(Columns * cellSize.X * painter.Scale.X);
+        var pixelHeight = (int)MathF.Round(Rows * cellSize.Y * painter.Scale.Y);
+        tab.EnsureStarted(Columns, Rows, pixelWidth, pixelHeight);
+        session.Resize(Columns, Rows, pixelWidth, pixelHeight);
 
         lock (session.SyncRoot)
         {
             var screen = session.Screen;
             var cursor = CursorFor(screen);
             shift = painter.Snap(new Vector2(0, tab.ScrollFraction(screen, cellSize.Y))).Y;
-            // a partly scrolled viewport also shows the line above it, shifted down by the remainder
-            for (var row = shift > 0 ? -1 : 0; row < Math.Min(Rows, screen.Rows); row++)
+            now = Environment.TickCount64;
+            placements.Clear();
+            if (screen.HasImages)
             {
-                var lineNumber = screen.FirstViewportLine + row;
-                if (screen.LineAt(lineNumber) is not { } line) continue;
-                var y = origin.Y + row * cellSize.Y + shift;
-                var blockCursorColumn = cursor is { Shape: CursorShape.Block } block && block.Row == row ? block.Column : -1;
-                PaintBackgrounds(painter, tab, line, lineNumber, y, blockCursorColumn);
-                PaintGlyphs(painter, tab, line, lineNumber, y, size, blockCursorColumn);
-                if (cursor is { } thin && thin.Row == row && thin.Shape != CursorShape.Block) PaintThinCursor(painter, thin.Shape, thin.Column, y);
+                placements.AddRange(screen.PlacementsFrom(screen.FirstViewportLine, Rows).OrderBy(entry => entry.Placement.Z));
+                // without images, backgrounds and text go row by row in one pass; with them, each layer covers the whole grid
+                PaintPlacements(painter, screen, z => z < BelowBackgrounds);
+                PaintRows(painter, tab, screen, cursor, size, backgrounds: true, glyphs: false);
+                PaintPlacements(painter, screen, z => z is >= BelowBackgrounds and < 0);
+                PaintRows(painter, tab, screen, cursor, size, backgrounds: false, glyphs: true);
+                PaintPlacements(painter, screen, z => z >= 0);
             }
+            else PaintRows(painter, tab, screen, cursor, size, backgrounds: true, glyphs: true);
             if (shift > 0) MaskOverflow(painter);
             PaintScrollbar(painter, screen);
         }
+    }
+
+    void PaintRows(Painter painter, TerminalTab tab, TerminalScreen screen, (int Row, int Column, CursorShape Shape)? cursor, float size, bool backgrounds, bool glyphs)
+    {
+        // a partly scrolled viewport also shows the line above it, shifted down by the remainder
+        for (var row = shift > 0 ? -1 : 0; row < Math.Min(Rows, screen.Rows); row++)
+        {
+            var lineNumber = screen.FirstViewportLine + row;
+            if (screen.LineAt(lineNumber) is not { } line) continue;
+            var y = origin.Y + row * cellSize.Y + shift;
+            var blockCursorColumn = cursor is { Shape: CursorShape.Block } block && block.Row == row ? block.Column : -1;
+            if (backgrounds) PaintBackgrounds(painter, tab, line, lineNumber, y, blockCursorColumn);
+            if (!glyphs) continue;
+            PaintGlyphs(painter, tab, line, lineNumber, y, size, blockCursorColumn);
+            if (screen.HasImages) PaintPlaceholders(painter, screen, line, y);
+            if (cursor is { } thin && thin.Row == row && thin.Shape != CursorShape.Block) PaintThinCursor(painter, thin.Shape, thin.Column, y);
+        }
+    }
+
+    void PaintPlacements(Painter painter, TerminalScreen screen, Func<int, bool> layer)
+    {
+        var cellPixels = new Vector2(screen.CellPixelWidth, screen.CellPixelHeight);
+        foreach (var (placement, row, column) in placements)
+        {
+            if (!layer(placement.Z)) continue;
+            var (sourceX, sourceY, sourceWidth, sourceHeight) = placement.Source;
+            if (sourceWidth <= 0 || sourceHeight <= 0) continue;
+            var (columns, rows) = placement.Size(cellPixels.X, cellPixels.Y);
+            var offset = new Vector2(placement.OffsetX / cellPixels.X, placement.OffsetY / cellPixels.Y);
+            var corner = painter.Snap(new Vector2(origin.X + (column + offset.X) * cellSize.X, origin.Y + (row + offset.Y) * cellSize.Y + shift));
+            var rect = new Rect(corner.X, corner.Y, (columns - offset.X) * cellSize.X, (rows - offset.Y) * cellSize.Y);
+            var image = placement.Image;
+            PaintImage(painter, image, rect, new Rect((float)sourceX / image.Width, (float)sourceY / image.Height, (float)sourceWidth / image.Width, (float)sourceHeight / image.Height));
+        }
+    }
+
+    /// Unicode placeholders: each U+10EEEE cell shows its piece of the virtual placement's image, fit into its cell grid and centered.
+    void PaintPlaceholders(Painter painter, TerminalScreen screen, Line line, float y)
+    {
+        placeholders.Clear();
+        screen.ResolvePlaceholders(line, placeholders);
+        var cellPixels = new Vector2(screen.CellPixelWidth, screen.CellPixelHeight);
+        foreach (var cell in placeholders)
+        {
+            var placement = cell.Placement;
+            var image = placement.Image;
+            var (sourceX, sourceY, sourceWidth, sourceHeight) = placement.Source;
+            if (sourceWidth <= 0 || sourceHeight <= 0 || cell.Index >= Columns) continue;
+            var (columns, rows) = placement.CellSpan(cellPixels.X, cellPixels.Y);
+            // in px of the placement's box
+            var scale = Math.Min(columns * cellPixels.X / sourceWidth, rows * cellPixels.Y / sourceHeight);
+            var picture = new Vector2(sourceWidth * scale, sourceHeight * scale);
+            var pictureStart = (new Vector2(columns * cellPixels.X, rows * cellPixels.Y) - picture) / 2;
+            var cellStart = new Vector2(cell.Column * cellPixels.X, cell.Row * cellPixels.Y);
+            var start = Vector2.Max(cellStart, pictureStart);
+            var end = Vector2.Min(cellStart + cellPixels, pictureStart + picture);
+            if (end.X <= start.X || end.Y <= start.Y) continue;
+
+            var sourceStart = new Vector2(sourceX, sourceY) + (start - pictureStart) / scale;
+            var sourceSize = (end - start) / scale;
+            var toLogical = cellSize / cellPixels;
+            var corner = new Vector2(origin.X + cell.Index * cellSize.X, y) + (start - cellStart) * toLogical;
+            var size = (end - start) * toLogical;
+            PaintImage(painter, image, new Rect(corner.X, corner.Y, size.X, size.Y),
+                new Rect(sourceStart.X / image.Width, sourceStart.Y / image.Height, sourceSize.X / image.Width, sourceSize.Y / image.Height));
+        }
+    }
+
+    /// Paints the current animation frame clipped to the grid, scheduling a repaint for the next frame.
+    void PaintImage(Painter painter, KittyImage image, Rect rect, Rect uv)
+    {
+        var (frame, nextChange) = image.FrameAt(now);
+        if (nextChange is { } delay) window.Invalidate(TimeSpan.FromMilliseconds(Math.Max(1, delay)));
+        var left = Math.Max(rect.X, origin.X);
+        var top = Math.Max(rect.Y, origin.Y);
+        var right = Math.Min(rect.X + rect.W, origin.X + Columns * cellSize.X);
+        var bottom = Math.Min(rect.Y + rect.H, origin.Y + Rows * cellSize.Y);
+        if (right <= left || bottom <= top || rect.W <= 0 || rect.H <= 0) return;
+        var clippedUv = new Rect(
+            uv.X + (left - rect.X) / rect.W * uv.W,
+            uv.Y + (top - rect.Y) / rect.H * uv.H,
+            (right - left) / rect.W * uv.W,
+            (bottom - top) / rect.H * uv.H);
+        painter.Image(frame.Pixels, image.Width, image.Height, new Rect(left, top, right - left, bottom - top), clippedUv);
     }
 
     // there's no clipping in the renderer, so cover the rows that slid into the padding with the background
@@ -216,7 +311,7 @@ sealed class TerminalView
             }
             var foreground = CellColors(tab, line, lineNumber, column, blockCursorColumn).Foreground;
             var x = origin.X + column * cellSize.X;
-            var visible = cell.Codepoint != ' ' && !cell.Flags.HasFlag(CellFlags.Hidden);
+            var visible = cell.Codepoint is not (' ' or ImagePlaceholder.Codepoint) && !cell.Flags.HasFlag(CellFlags.Hidden);
             if (visible && cell.Width == 1)
             {
                 if (run.Count > 0 && foreground != runColor) Flush();

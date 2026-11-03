@@ -59,7 +59,11 @@ public sealed class TerminalSession : IDisposable
     public void Start(int columns, int rows, int pixelWidth = 0, int pixelHeight = 0)
     {
         if (pty != null) throw new InvalidOperationException("Session already started.");
-        lock (SyncRoot) Screen.Resize(columns, rows);
+        lock (SyncRoot)
+        {
+            Screen.Resize(columns, rows);
+            Screen.SetPixelSize(pixelWidth, pixelHeight);
+        }
         pty = ptyFactory.Start(StartInfo, new PtySize(columns, rows, pixelWidth, pixelHeight));
         reader = new Thread(ReadLoop) { IsBackground = true, Name = $"pty {StartInfo.Program}" };
         reader.Start();
@@ -128,12 +132,14 @@ public sealed class TerminalSession : IDisposable
         if (reporting) Write(focused ? "\e[I" : "\e[O");
     }
 
+    /// Pixel sizes are physical px of the whole grid; images are laid out with them, so a font size change counts too.
     public void Resize(int columns, int rows, int pixelWidth = 0, int pixelHeight = 0)
     {
         lock (SyncRoot)
         {
-            if (columns == Screen.Columns && rows == Screen.Rows) return;
+            if (columns == Screen.Columns && rows == Screen.Rows && pixelWidth == Screen.PixelWidth && pixelHeight == Screen.PixelHeight) return;
             Screen.Resize(columns, rows);
+            Screen.SetPixelSize(pixelWidth, pixelHeight);
         }
         pty?.Resize(new PtySize(columns, rows, pixelWidth, pixelHeight));
         Changed?.Invoke();

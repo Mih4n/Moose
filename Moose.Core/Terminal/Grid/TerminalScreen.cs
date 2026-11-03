@@ -1,9 +1,10 @@
 using System.Text;
+using Moose.Core.Terminal.Images;
 using Moose.Core.Terminal.Parsing;
 
 namespace Moose.Core.Terminal.Grid;
 
-public sealed class TerminalScreen : IVtHandler
+public sealed partial class TerminalScreen : IVtHandler
 {
     const string LineDrawing = "◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·";
     const int TabWidth = 8;
@@ -166,7 +167,11 @@ public sealed class TerminalScreen : IVtHandler
         var lineDrawing = shiftOut ? lineDrawingG1 : lineDrawingG0;
         if (lineDrawing && codepoint is >= 0x60 and <= 0x7e) codepoint = LineDrawing[codepoint - 0x60];
         var width = CharWidth.Of(codepoint);
-        if (width == 0) return;
+        if (width == 0)
+        {
+            AttachPlaceholderDiacritic(codepoint);
+            return;
+        }
 
         if (wrapPending && AutoWrap) WrapToNextLine();
         if (width == 2 && CursorColumn == Columns - 1)
@@ -179,7 +184,7 @@ public sealed class TerminalScreen : IVtHandler
 
         var cells = Lines[CursorRow].Cells;
         ClearWideOverlap(cells, CursorColumn, width);
-        cells[CursorColumn] = new Cell(codepoint, foreground, background, flags, (byte)width, hyperlink);
+        cells[CursorColumn] = new Cell(codepoint, foreground, background, flags, (byte)width, codepoint == ImagePlaceholder.Codepoint ? 0 : hyperlink);
         if (width == 2) cells[CursorColumn + 1] = new Cell(' ', foreground, background, flags, 0, hyperlink);
         lastPrinted = codepoint;
 
@@ -280,6 +285,7 @@ public sealed class TerminalScreen : IVtHandler
             case 'n': DeviceStatusReport(parameters[0]); break;
             case 'r': SetScrollRegion(parameters.Get(0, 1) - 1, parameters.Get(1, Rows) - 1); break;
             case 's': if (parameters.Count == 0) SaveCursor(); break;
+            case 't': ReportWindow(parameters[0]); break;
             case 'u': RestoreCursor(); break;
         }
     }
@@ -606,9 +612,11 @@ public sealed class TerminalScreen : IVtHandler
                 EraseInLine(1);
                 break;
             case 2:
+                ClearImagePlacements(everything: false);
                 foreach (var line in lines) ClearLine(line);
                 break;
             case 3:
+                ClearImagePlacements(everything: true);
                 scrollback.Clear();
                 ViewportOffset = 0;
                 break;
@@ -740,6 +748,7 @@ public sealed class TerminalScreen : IVtHandler
         hyperlink = 0;
         ViewportOffset = 0;
         tabStops = CreateTabStops(Columns);
+        ResetImages();
         ClearLines(primaryLines);
         ClearLines(alternateLines);
         CursorRow = 0;
@@ -779,7 +788,11 @@ public sealed class TerminalScreen : IVtHandler
 
     void ClearLines(Line[] lines)
     {
-        foreach (var line in lines) ClearLine(line);
+        foreach (var line in lines)
+        {
+            ClearLine(line);
+            line.Placements = null;
+        }
     }
 
     void ClearLine(Line line)

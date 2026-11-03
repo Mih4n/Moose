@@ -11,5 +11,6 @@ public enum ParserState
     CsiIgnore,
     DcsString,
     OscString,
+    ApcString,
     IgnoredString,
 }

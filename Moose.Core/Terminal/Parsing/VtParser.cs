@@ -6,6 +6,8 @@ public sealed class VtParser(IVtHandler handler)
 {
     const int MaxIntermediates = 2;
     const int MaxOscLength = 1 << 20;
+    // a kitty graphics chunk is at most 4 KiB, but unchunked images can be sent in one go
+    const int MaxApcLength = 64 << 20;
     const byte Escape = 0x1b;
     const byte Bell = 0x07;
 
@@ -49,6 +51,7 @@ public sealed class VtParser(IVtHandler handler)
         if (value == Escape)
         {
             if (State == ParserState.OscString) DispatchOsc();
+            else if (State == ParserState.ApcString) DispatchApc();
             Clear();
             State = ParserState.Escape;
             return;
@@ -64,6 +67,7 @@ public sealed class VtParser(IVtHandler handler)
             case ParserState.CsiIntermediate: CsiIntermediate(value); break;
             case ParserState.CsiIgnore: CsiIgnore(value); break;
             case ParserState.OscString: OscString(value); break;
+            case ParserState.ApcString: ApcString(value); break;
             case ParserState.DcsString:
             case ParserState.IgnoredString:
                 break;
@@ -103,7 +107,8 @@ public sealed class VtParser(IVtHandler handler)
             case (byte)'[': State = ParserState.CsiEntry; break;
             case (byte)']': oscLength = 0; State = ParserState.OscString; break;
             case (byte)'P': State = ParserState.DcsString; break;
-            case (byte)'X' or (byte)'^' or (byte)'_': State = ParserState.IgnoredString; break;
+            case (byte)'_': oscLength = 0; State = ParserState.ApcString; break;
+            case (byte)'X' or (byte)'^': State = ParserState.IgnoredString; break;
             case < 0x7f: DispatchEscape(value); break;
         }
     }
@@ -172,6 +177,14 @@ public sealed class VtParser(IVtHandler handler)
         osc[oscLength++] = value;
     }
 
+    // shares the OSC buffer: only one string is ever open at a time
+    void ApcString(byte value)
+    {
+        if (value < 0x20 || oscLength >= MaxApcLength) return;
+        if (oscLength == osc.Length) Array.Resize(ref osc, osc.Length * 2);
+        osc[oscLength++] = value;
+    }
+
     void Parameter(byte value)
     {
         if (value == ';') parameters.Separate(colon: false);
@@ -207,5 +220,12 @@ public sealed class VtParser(IVtHandler handler)
     {
         handler.OscDispatch(osc.AsSpan(0, oscLength));
         oscLength = 0;
+    }
+
+    void DispatchApc()
+    {
+        handler.ApcDispatch(osc.AsSpan(0, oscLength));
+        oscLength = 0;
+        if (osc.Length > 1 << 20) osc = new byte[256]; // don't hold on to the buffer of a huge image
     }
 }

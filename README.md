@@ -104,6 +104,18 @@ background = "#282828"
 border = "#3c3836"
 ```
 
+## Images
+
+Moose speaks the [kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/), so `kitten icat`, yazi, chafa, timg and friends show real images instead of colored blocks:
+
+```sh
+kitten icat cat.png
+```
+
+Pretty much all of it works: PNG and raw RGB(A) data, zlib compression, chunked uploads, files, temp files and shared memory, placements with sizes, offsets and z-index (under the text, under the backgrounds or on top), relative placements, all the delete modes, animations (so GIFs from `icat` play) and unicode placeholders (`icat --unicode-placeholder`, which is what tmux and Neovim plugins use). Images scroll with the text and go into the scrollback with it.
+
+What's missing: placeholders don't look at the underline color, so with several virtual placements of one image the first one is used.
+
 ## Config includes
 
 If one config file is too long for you, split it:

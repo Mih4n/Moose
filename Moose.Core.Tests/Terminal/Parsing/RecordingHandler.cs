@@ -22,4 +22,6 @@ sealed class RecordingHandler : IVtHandler
     }
 
     public void OscDispatch(ReadOnlySpan<byte> payload) => Events.Add($"osc {Encoding.UTF8.GetString(payload)}");
+
+    public void ApcDispatch(ReadOnlySpan<byte> payload) => Events.Add($"apc {Encoding.UTF8.GetString(payload)}");
 }

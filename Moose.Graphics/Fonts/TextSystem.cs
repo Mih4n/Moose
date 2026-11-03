@@ -27,6 +27,7 @@ internal sealed class TextSystem : IDisposable
     readonly Dictionary<float, Vector2> cellSizes = [];
 
     public GlyphAtlas Atlas { get; } = new(1024);
+    public ImageRegistry Images { get; } = new();
     public Vector2 Scale { get; set; } = Vector2.One;
     public float DefaultSize { get; }
 
