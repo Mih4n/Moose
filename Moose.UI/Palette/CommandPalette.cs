@@ -100,7 +100,15 @@ sealed class CommandPalette
     public Element Render(UiTheme theme, IReadOnlyList<Keybinding> keybindings, Action<string> run)
     {
         var hints = new Dictionary<string, string>();
-        foreach (var binding in keybindings) hints[binding.Action] = binding.Chord.ToString();
+        foreach (var binding in keybindings)
+        {
+             var chords = binding
+                .Chords
+                .Select(c => c.ToString());
+
+            hints[binding.Action] = string.Join(" ", chords);
+        }
+
         var rows = Math.Max(1, Math.Min(VisibleRows, matches.Count));
         var listHeight = rows * RowHeight + 2 * ListPadding;
         // the border is drawn inside the panel, so the content is inset by it on every side, plus the divider below the input

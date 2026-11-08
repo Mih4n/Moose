@@ -93,7 +93,8 @@ sealed class RootView : IView, IInputHandler
     {
         if (ActiveTab is not { } tab) return;
         var chord = new KeyChord(key, modifiers);
-        var binding = settings.Keybindings.LastOrDefault(candidate => candidate.Chord == chord);
+        var binding = settings.Keybindings.LastOrDefault(candidate => candidate.Chords.Contains(chord));
+
         if (palette.IsOpen)
         {
             if (binding?.Action == "command_palette") palette.Close();

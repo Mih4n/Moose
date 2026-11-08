@@ -27,9 +27,16 @@ sealed record UiSettings(
     [
         .. Configuration.Children(Keys.Keybindings.Section)
             .Select(binding => (
-                Chord: KeyChord.Parse(Configuration.String(Configuration.Key(binding, Keys.Keybindings.Keys))),
+                Chords: SplitChords(Configuration.String(Configuration.Key(binding, Keys.Keybindings.Keys))),
                 Action: Configuration.String(Configuration.Key(binding, Keys.Keybindings.Action))))
-            .Where(binding => binding.Chord != null)
-            .Select(binding => new Keybinding(binding.Chord!.Value, binding.Action)),
+            .Where(binding => binding.Chords.All(c => c != null))
+            .Select(binding => new Keybinding(binding.Chords.Select(c => c!.Value).ToArray(), binding.Action)),
+    ];
+
+    static IReadOnlyList<KeyChord?> SplitChords(string binding) => [
+        .. binding
+            .Trim()
+            .Split(" ")
+            .Select(s => KeyChord.Parse(s))
     ];
 }

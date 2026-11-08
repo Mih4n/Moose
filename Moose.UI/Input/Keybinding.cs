@@ -1,3 +1,3 @@
 namespace Moose.UI.Input;
 
-sealed record Keybinding(KeyChord Chord, string Action);
+sealed record Keybinding(KeyChord[] Chords, string Action);
